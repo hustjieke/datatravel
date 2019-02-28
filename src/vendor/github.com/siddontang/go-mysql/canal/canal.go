@@ -282,8 +282,9 @@ func (c *Canal) prepareSyncer() error {
 		User:     c.cfg.User,
 		Password: c.cfg.Password,
 		Charset:  c.cfg.Charset,
-		Database: c.cfg.Dump.TableDB,
-		Table:    c.cfg.Dump.Tables[0],
+		// Database and Table will be used in the future
+		// Database: c.cfg.Dump.TableDB,
+		// Table:    c.cfg.Dump.Tables[0],
 	}
 
 	c.syncer = replication.NewBinlogSyncer(&cfg)

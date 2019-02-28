@@ -14,6 +14,7 @@ import (
 	"time"
 	"xlog"
 
+	"github.com/juju/errors"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/mysql"
@@ -47,7 +48,7 @@ func (shift *Shift) prepareConnection() error {
 	log := shift.log
 	cfg := shift.cfg
 
-	fromPool, err := NewPool(log, 4, cfg.From, cfg.FromUser, cfg.FromPassword)
+	fromPool, err := NewPool(log, 16, cfg.From, cfg.FromUser, cfg.FromPassword)
 	if err != nil {
 		log.Error("shift.start.from.connection.pool.error:%+v", err)
 		return err
@@ -78,10 +79,28 @@ func (shift *Shift) prepareTable() error {
 	toConn := shift.toPool.Get()
 	defer shift.toPool.Put(toConn)
 
-	// Check the database is not system database and create them.
-	if _, isSystem := sysDatabases[strings.ToLower(cfg.ToDatabase)]; !isSystem {
-		log.Info("shift.prepare.database[%s]...", cfg.ToDatabase)
-		sql := fmt.Sprintf("select * from information_schema.tables where table_schema = '%s' limit 1", cfg.ToDatabase)
+	// Get databases
+	log.Info("shift.get.database...")
+	sql := "show databases;"
+	r, err := fromConn.Execute(sql)
+	if err != nil {
+		log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+		return err
+	}
+	for i := 0; i < r.RowNumber(); i++ {
+		str, _ := r.GetString(i, 0)
+		if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
+			cfg.Databases = append(cfg.Databases, str)
+		}
+	}
+	if len(cfg.Databases) == 0 {
+		return errors.New("no.database.to.shift")
+	}
+
+	for j := 0; j < len(cfg.Databases); j++ {
+		// Prepare database, check the database is not system database and create them.
+		log.Info("shift.prepare.database[%s]...", cfg.Databases[j])
+		sql := fmt.Sprintf("select * from information_schema.tables where table_schema = '%s' limit 1", cfg.Databases[j])
 		r, err := toConn.Execute(sql)
 		if err != nil {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
@@ -89,7 +108,7 @@ func (shift *Shift) prepareTable() error {
 		}
 
 		if r.RowNumber() == 0 {
-			sql := fmt.Sprintf("create database if not exists `%s`", cfg.ToDatabase)
+			sql := fmt.Sprintf("create database if not exists `%s`", cfg.Databases[j])
 			if _, err := toConn.Execute(sql); err != nil {
 				log.Error("shift.create.database.sql[%s].error:%+v", sql, err)
 				return err
@@ -99,24 +118,52 @@ func (shift *Shift) prepareTable() error {
 			log.Info("shift.database.exists...")
 		}
 
-		log.Info("shift.prepare.table[%s/%s]...", cfg.ToDatabase, cfg.ToTable)
-		sql = fmt.Sprintf("show create table `%s`.`%s`", cfg.FromDatabase, cfg.FromTable)
+		// Get tables
+		sql = fmt.Sprintf("use `%s`", cfg.Databases[j])
 		r, err = fromConn.Execute(sql)
 		if err != nil {
-			log.Error("shift.show.[%s].create.table.sql[%s].error:%+v", cfg.From, sql, err)
+			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
 			return err
 		}
-		sql, err = r.GetString(0, 1)
+
+		sql = fmt.Sprintf("show tables")
+		r, err = fromConn.Execute(sql)
 		if err != nil {
-			log.Error("shift.show.[%s].create.table.get.error:%+v", cfg.From, err)
+			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
 			return err
 		}
-		sql = strings.Replace(sql, fmt.Sprintf("CREATE TABLE `%s`", cfg.FromTable), fmt.Sprintf("CREATE TABLE `%s`.`%s`", cfg.ToDatabase, cfg.ToTable), 1)
-		if _, err := toConn.Execute(sql); err != nil {
-			log.Error("shift.create.[%s].table.sql[%s].error:%+v", cfg.From, sql, err)
-			return err
+
+		var tables []string
+		for i := 0; i < r.RowNumber(); i++ {
+			str, _ := r.GetString(i, 0)
+			tables = append(tables, str)
 		}
-		log.Info("shift.prepare.table.done...")
+		if len(tables) == 0 {
+			log.Error("shift.check.database.[%+v].no.tables", cfg.Databases[j])
+			continue // don`t need return err
+		}
+
+		// prepare tables
+		for i := 0; i < len(tables); i++ {
+			log.Info("shift.prepare.table[%s/%s]...", cfg.Databases[j], tables[i])
+			sql = fmt.Sprintf("show create table `%s`.`%s`", cfg.Databases[j], tables[i])
+			r, err = fromConn.Execute(sql)
+			if err != nil {
+				log.Error("shift.show.[%s].create.table.sql[%s].error:%+v", cfg.From, sql, err)
+				return err
+			}
+			sql, err = r.GetString(0, 1)
+			if err != nil {
+				log.Error("shift.show.[%s].create.table.get.error:%+v", cfg.From, err)
+				return err
+			}
+			sql = strings.Replace(sql, fmt.Sprintf("CREATE TABLE `%s`", tables[i]), fmt.Sprintf("CREATE TABLE `%s`.`%s`", cfg.Databases[j], tables[i]), 1)
+			if _, err := toConn.Execute(sql); err != nil {
+				log.Error("shift.create.[%s].table.sql[%s].error:%+v", cfg.From, sql, err)
+				return err
+			}
+			log.Info("shift.prepare.table.done...")
+		}
 	}
 	return nil
 }
@@ -130,8 +177,10 @@ func (shift *Shift) prepareCanal() error {
 	cfg.Password = conf.FromPassword
 	cfg.Dump.ExecutionPath = conf.MySQLDump
 	cfg.Dump.DiscardErr = false
-	cfg.Dump.TableDB = conf.FromDatabase
-	cfg.Dump.Tables = []string{conf.FromTable}
+	// TableDB and Tables will be used in the future
+	// cfg.Dump.TableDB = conf.FromDatabase
+	// cfg.Dump.Tables = []string{conf.FromTable}
+	cfg.Dump.Databases = conf.Databases
 
 	// canal
 	canal, err := canal.NewCanal(cfg)

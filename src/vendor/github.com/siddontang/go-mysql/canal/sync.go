@@ -21,10 +21,10 @@ func (c *Canal) startSyncBinlog() error {
 	log.Infof("start sync binlog at %v", pos)
 
 	// prepare TableSchema
-	_, err := c.GetTable(c.dumper.TableDB, c.dumper.Tables[0])
-	if err != nil {
-		return errors.Trace(err)
-	}
+	//  _, err := c.GetTable(c.dumper.TableDB, c.dumper.Tables[0])
+	// if err != nil {
+	// 	return errors.Trace(err)
+	// }
 
 	s, err := c.syncer.StartSync(pos)
 	if err != nil {

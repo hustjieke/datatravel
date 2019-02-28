@@ -57,20 +57,16 @@ func NewEventHandler(log *xlog.Log, shift *Shift) *EventHandler {
 
 // OnRow used to handle the Insert/Delete/Update events.
 func (h *EventHandler) OnRow(e *canal.RowsEvent) error {
-	cfg := h.shift.cfg
-
-	if e.Table.Schema == cfg.FromDatabase && e.Table.Name == cfg.FromTable {
-		switch e.Action {
-		case canal.InsertAction:
-			_, isSystem := sysDatabases[strings.ToLower(e.Table.Schema)]
-			h.InsertRow(e, isSystem)
-		case canal.DeleteAction:
-			h.DeleteRow(e)
-		case canal.UpdateAction:
-			h.UpdateRow(e)
-		default:
-			h.shift.panicMe("shift.handler.unsupported.event[%+v]", e)
-		}
+	switch e.Action {
+	case canal.InsertAction:
+		_, isSystem := sysDatabases[strings.ToLower(e.Table.Schema)]
+		h.InsertRow(e, isSystem)
+	case canal.DeleteAction:
+		h.DeleteRow(e)
+	case canal.UpdateAction:
+		h.UpdateRow(e)
+	default:
+		h.shift.panicMe("shift.handler.unsupported.event[%+v]", e)
 	}
 	return nil
 }
@@ -92,6 +88,7 @@ func (h *EventHandler) OnDDL(nextPos mysql.Position, e *replication.QueryEvent) 
 					database = string(e.Schema)
 				}
 				table := ddl.Table.Name.String()
+				// TODO:wait to confirm
 				if cfg.FromDatabase == database && cfg.FromTable == table {
 					h.shift.panicMe("shift.cant.do.ddl[%#v].during.shifting...", e)
 				}

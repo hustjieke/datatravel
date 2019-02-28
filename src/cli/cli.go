@@ -42,9 +42,8 @@ var (
 )
 
 func check(log *xlog.Log) {
-	if *from == "" || *fromUser == "" || *fromDatabase == "" || *fromTable == "" ||
-		*to == "" || *toUser == "" || *toDatabase == "" || *toTable == "" {
-		log.Panic("usage: shift --from=[host:port] --from-database=[database] --from-table=[table] --from-user=[user] --from-password=[password] -- to=[host:port] --to-database=[database] --to-table=[table]  --to-user=[user] --to-password=[password] --cleanup=[false|true]")
+	if *from == "" || *fromUser == "" || *to == "" || *toUser == "" {
+		log.Panic("usage: shift --from=[host:port] --from-password=[password] -- to=[host:port] --to-user=[user] --to-password=[password] --cleanup=[false|true]")
 	}
 }
 

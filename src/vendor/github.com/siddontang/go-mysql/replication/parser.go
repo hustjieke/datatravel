@@ -156,9 +156,9 @@ func (p *BinlogParser) SetParseCfg(cfg *BinlogSyncerConfig) {
 func (p *BinlogParser) SetParseTabMap() {
 	log.Infof("BinlogParser.SetParseTabMap.GetTable[%s.%s]...", p.cfg.database, p.cfg.table)
 	// Prepare table schema for RowsEvent Decode
-	if _, err := p.GetTable(p.cfg.database, p.cfg.table); err != nil {
-		log.Fatalf("BinlogParser.SetParseTabMap.GetTable[%s.%s].error:%+v", p.cfg.database, p.cfg.table, err)
-	}
+	// if _, err := p.GetTable(p.cfg.database, p.cfg.table); err != nil {
+	// 	log.Fatalf("BinlogParser.SetParseTabMap.GetTable[%s.%s].error:%+v", p.cfg.database, p.cfg.table, err)
+	// }
 	log.Infof("BinlogParser.SetParseTabMap.GetTable[%s.%s].done...", p.cfg.database, p.cfg.table)
 }
 

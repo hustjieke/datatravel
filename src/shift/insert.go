@@ -19,7 +19,6 @@ import (
 func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 	var conn *client.Conn
 	log := h.log
-	cfg := h.shift.cfg
 	h.wg.Add(1)
 
 	executeFunc := func(conn *client.Conn) {
@@ -48,7 +47,7 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 			}
 
 			query := &Query{
-				sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", cfg.ToDatabase, cfg.ToTable, strings.Join(values, ",")),
+				sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
 				typ:       QueryType_INSERT,
 				skipError: systemTable,
 			}
@@ -66,7 +65,7 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 	if e.DataType == canal.BINLOGDATA {
 		executeFunc(conn)
 	} else {
-		// Backend worker for mysqldump.
+		// canal.DUMPDATA, Backend worker for mysqldump.
 		go func(conn *client.Conn) {
 			executeFunc(conn)
 		}(conn)
