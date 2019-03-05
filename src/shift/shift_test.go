@@ -699,7 +699,7 @@ func TestShiftChecksumTable(t *testing.T) {
 		assertChecksumEqual(t, shift)
 	}
 
-	err := shift.ChecksumTable()
+	err := shift.ChecksumTables()
 	assert.Nil(t, err)
 }
 

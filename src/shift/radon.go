@@ -149,7 +149,7 @@ func (shift *Shift) setRadon() {
 	// 4. Checksum table.
 	if shift.cfg.Checksum {
 		log.Info("shift.checksum.table...")
-		if err := shift.ChecksumTable(); err != nil {
+		if err := shift.ChecksumTables(); err != nil {
 			shift.panicMe("shift.checksum.table.error:%+v", err)
 			return
 		}

@@ -28,5 +28,6 @@ type Config struct {
 	RadonURL  string
 	Checksum  bool
 
-	Databases []string
+	Databases    []string
+	DBTablesMaps map[string][]string // key:db, value: db.tables
 }
