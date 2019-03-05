@@ -19,7 +19,6 @@ import (
 func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 	var conn *client.Conn
 	log := h.log
-	cfg := h.shift.cfg
 
 	h.wg.Add(1)
 	executeFunc := func(conn *client.Conn) {
@@ -59,7 +58,7 @@ func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 			}
 
 			query := &Query{
-				sql:       fmt.Sprintf("delete from `%s`.`%s` where %s", cfg.ToDatabase, cfg.ToTable, strings.Join(values, " and ")),
+				sql:       fmt.Sprintf("delete from `%s`.`%s` where %s", e.Table.Schema, e.Table.Name, strings.Join(values, " and ")),
 				typ:       QueryType_DELETE,
 				skipError: false,
 			}

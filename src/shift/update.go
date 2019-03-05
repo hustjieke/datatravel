@@ -18,7 +18,6 @@ import (
 
 func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 	log := h.log
-	cfg := h.shift.cfg
 	var conn *client.Conn
 
 	h.wg.Add(1)
@@ -76,7 +75,7 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 				}
 			}
 			query := &Query{
-				sql:       fmt.Sprintf("update `%s`.`%s` set %s where %s", cfg.ToDatabase, cfg.ToTable, strings.Join(values, ","), strings.Join(wheres, " and ")),
+				sql:       fmt.Sprintf("update `%s`.`%s` set %s where %s", e.Table.Schema, e.Table.Name, strings.Join(values, ","), strings.Join(wheres, " and ")),
 				typ:       QueryType_UPDATE,
 				skipError: false,
 			}

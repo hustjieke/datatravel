@@ -27,4 +27,6 @@ type Config struct {
 	Behinds   int
 	RadonURL  string
 	Checksum  bool
+
+	Databases []string
 }

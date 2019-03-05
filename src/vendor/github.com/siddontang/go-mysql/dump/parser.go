@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/juju/errors"
+	"github.com/ngaut/log"
 	"github.com/siddontang/go-mysql/mysql"
 )
 
@@ -58,6 +59,7 @@ func Parse(r io.Reader, h ParseHandler) error {
 					return errors.Errorf("parse binlog %v err, invalid number", line)
 				}
 
+				log.Infof("canal.dump.binlog.parsed.name[%s].pos[%d]", name, pos)
 				if err = h.BinLog(name, pos); err != nil && err != ErrSkip {
 					return errors.Trace(err)
 				}

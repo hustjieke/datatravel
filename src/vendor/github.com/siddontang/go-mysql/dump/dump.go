@@ -2,12 +2,14 @@ package dump
 
 import (
 	"fmt"
-	"github.com/juju/errors"
-	. "github.com/siddontang/go-mysql/mysql"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/juju/errors"
+	"github.com/ngaut/log"
+	. "github.com/siddontang/go-mysql/mysql"
 )
 
 // Unlick mysqldump, Dumper is designed for parsing and syning data easily.
@@ -144,6 +146,8 @@ func (d *Dumper) Dump(w io.Writer) error {
 	if len(d.Charset) != 0 {
 		args = append(args, fmt.Sprintf("--default-character-set=%s", d.Charset))
 	}
+
+	log.Infof("canal.dump.args[%s]", args)
 
 	cmd := exec.Command(d.ExecutionPath, args...)
 
