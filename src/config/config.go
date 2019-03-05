@@ -6,7 +6,7 @@
  *
  */
 
-package shift
+package config
 
 type Config struct {
 	From         string

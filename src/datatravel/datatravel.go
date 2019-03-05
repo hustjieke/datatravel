@@ -10,6 +10,7 @@ package main
 
 import (
 	"build"
+	"config"
 	"flag"
 	"fmt"
 	"os"
@@ -61,7 +62,7 @@ func main() {
            IMPORTANT: Please check that the shift run completes successfully.
            At the end of a successful shift run prints "shift.completed.OK!".`)
 
-	cfg := &shift.Config{
+	cfg := &config.Config{
 		From:         *from,
 		FromUser:     *fromUser,
 		FromPassword: *fromPassword,
