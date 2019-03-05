@@ -11,6 +11,7 @@ package shift
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"xlog"
 
@@ -31,6 +32,7 @@ type Shift struct {
 	handler       *EventHandler
 	allDone       bool
 	panicHandler  func(log *xlog.Log, format string, v ...interface{})
+	wg            sync.WaitGroup
 }
 
 func NewShift(log *xlog.Log, cfg *Config) *Shift {
@@ -97,10 +99,10 @@ func (shift *Shift) prepareTable() error {
 		return errors.New("no.database.to.shift")
 	}
 
-	for j := 0; j < len(cfg.Databases); j++ {
+	for _, db := range cfg.Databases {
 		// Prepare database, check the database is not system database and create them.
-		log.Info("shift.prepare.database[%s]...", cfg.Databases[j])
-		sql := fmt.Sprintf("select * from information_schema.tables where table_schema = '%s' limit 1", cfg.Databases[j])
+		log.Info("shift.prepare.database[%s]...", db)
+		sql := fmt.Sprintf("select * from information_schema.tables where table_schema = '%s' limit 1", db)
 		r, err := toConn.Execute(sql)
 		if err != nil {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
@@ -108,7 +110,7 @@ func (shift *Shift) prepareTable() error {
 		}
 
 		if r.RowNumber() == 0 {
-			sql := fmt.Sprintf("create database if not exists `%s`", cfg.Databases[j])
+			sql := fmt.Sprintf("create database if not exists `%s`", db)
 			if _, err := toConn.Execute(sql); err != nil {
 				log.Error("shift.create.database.sql[%s].error:%+v", sql, err)
 				return err
@@ -119,7 +121,7 @@ func (shift *Shift) prepareTable() error {
 		}
 
 		// Get tables
-		sql = fmt.Sprintf("use `%s`", cfg.Databases[j])
+		sql = fmt.Sprintf("use `%s`", db)
 		r, err = fromConn.Execute(sql)
 		if err != nil {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
@@ -138,15 +140,16 @@ func (shift *Shift) prepareTable() error {
 			str, _ := r.GetString(i, 0)
 			tables = append(tables, str)
 		}
+		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
-			log.Error("shift.check.database.[%+v].no.tables", cfg.Databases[j])
+			log.Error("shift.check.database.[%+v].no.tables", db)
 			continue // don`t need return err
 		}
 
 		// prepare tables
-		for i := 0; i < len(tables); i++ {
-			log.Info("shift.prepare.table[%s/%s]...", cfg.Databases[j], tables[i])
-			sql = fmt.Sprintf("show create table `%s`.`%s`", cfg.Databases[j], tables[i])
+		for _, tbl := range tables {
+			log.Info("shift.prepare.table[%s/%s]...", db, tbl)
+			sql = fmt.Sprintf("show create table `%s`.`%s`", db, tbl)
 			r, err = fromConn.Execute(sql)
 			if err != nil {
 				log.Error("shift.show.[%s].create.table.sql[%s].error:%+v", cfg.From, sql, err)
@@ -157,7 +160,7 @@ func (shift *Shift) prepareTable() error {
 				log.Error("shift.show.[%s].create.table.get.error:%+v", cfg.From, err)
 				return err
 			}
-			sql = strings.Replace(sql, fmt.Sprintf("CREATE TABLE `%s`", tables[i]), fmt.Sprintf("CREATE TABLE `%s`.`%s`", cfg.Databases[j], tables[i]), 1)
+			sql = strings.Replace(sql, fmt.Sprintf("CREATE TABLE `%s`", tbl), fmt.Sprintf("CREATE TABLE `%s`.`%s`", db, tbl), 1)
 			if _, err := toConn.Execute(sql); err != nil {
 				log.Error("shift.create.[%s].table.sql[%s].error:%+v", cfg.From, sql, err)
 				return err
@@ -210,51 +213,58 @@ func (shift *Shift) prepareCanal() error {
 	+----------------+-----------+
 */
 // ChecksumTable ensure that FromTable and ToTable are consistent
-func (shift *Shift) ChecksumTable() error {
+func (shift *Shift) ChecksumTables() error {
+	for db, tbls := range shift.cfg.DBTablesMaps {
+		shift.wg.Add(1)
+		go shift.checksumTables(db, tbls)
+	}
+	shift.wg.Wait()
+	return nil
+}
+
+func (shift *Shift) checksumTables(db string, tbls []string) error {
 	log := shift.log
 	var fromchecksum, tochecksum uint64
 
-	if _, isSystem := sysDatabases[strings.ToLower(shift.cfg.FromDatabase)]; isSystem {
-		log.Info("shift.checksum.table.skip.system.table[%s.%s]", shift.cfg.FromDatabase, shift.cfg.FromTable)
-		return nil
-	}
+	fromConn := shift.fromPool.Get()
+	defer shift.fromPool.Put(fromConn)
 
-	checksumFunc := func(t string, Conn *client.Conn, Database string, Table string, c chan uint64) {
-		sql := fmt.Sprintf("checksum table %s.%s", Database, Table)
-		r, err := Conn.Execute(sql)
-		if err != nil {
-			shift.panicMe("shift.checksum.%s.table[%s.%s].error:%+v", t, Database, Table, err)
+	toConn := shift.toPool.Get()
+	defer shift.toPool.Put(toConn)
+
+	for _, tbl := range tbls {
+		checksumFunc := func(t string, Conn *client.Conn, Database string, Table string, c chan uint64) {
+			sql := fmt.Sprintf("checksum table %s.%s", Database, Table)
+			r, err := Conn.Execute(sql)
+			if err != nil {
+				shift.panicMe("shift.checksum.%s.table[%s.%s].error:%+v", t, Database, Table, err)
+			}
+
+			v, err := r.GetUint(0, 1)
+			if err != nil {
+				shift.panicMe("shift.get.%s.table[%s.%s].checksum.error:%+v", Database, Table, err)
+			}
+			c <- v
 		}
 
-		v, err := r.GetUint(0, 1)
-		if err != nil {
-			shift.panicMe("shift.get.%s.table[%s.%s].checksum.error:%+v", Database, Table, err)
+		fromchan := make(chan uint64, 1)
+		tochan := make(chan uint64, 1)
+
+		// execute checksum func
+		{
+			go checksumFunc("from", fromConn, db, tbl, fromchan)
+			go checksumFunc("to", toConn, db, tbl, tochan)
 		}
-		c <- v
+		fromchecksum = <-fromchan
+		tochecksum = <-tochan
+
+		if fromchecksum != tochecksum {
+			err := fmt.Errorf("checksum not equivalent: from-table checksum is %v, to-table checksum is %v", fromchecksum, tochecksum)
+			log.Error("shift.checksum.table.err:%+v", err)
+			return err
+		}
 	}
-
-	fromchan := make(chan uint64, 1)
-	tochan := make(chan uint64, 1)
-
-	// execute checksum func
-	{
-		fromConn := shift.fromPool.Get()
-		defer shift.fromPool.Put(fromConn)
-
-		toConn := shift.toPool.Get()
-		defer shift.toPool.Put(toConn)
-
-		go checksumFunc("from", fromConn, shift.cfg.FromDatabase, shift.cfg.FromTable, fromchan)
-		go checksumFunc("to", toConn, shift.cfg.ToDatabase, shift.cfg.ToTable, tochan)
-	}
-	fromchecksum = <-fromchan
-	tochecksum = <-tochan
-
-	if fromchecksum != tochecksum {
-		err := fmt.Errorf("checksum not equivalent: from-table checksum is %v, to-table checksum is %v", fromchecksum, tochecksum)
-		log.Error("shift.checksum.table.err:%+v", err)
-		return err
-	}
+	shift.wg.Done()
 	return nil
 }
 

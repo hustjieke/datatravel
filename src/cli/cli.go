@@ -79,6 +79,7 @@ func main() {
 		RadonURL:     *radonURL,
 		Checksum:     *checksum,
 	}
+	cfg.DBTablesMaps = make(map[string][]string)
 	log.Info("shift.cfg:%+v", cfg)
 	shift := shift.NewShift(log, cfg)
 	if err := shift.Start(); err != nil {
