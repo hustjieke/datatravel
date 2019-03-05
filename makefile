@@ -5,7 +5,7 @@ build: LDFLAGS   += $(shell GOPATH=${GOPATH} src/build/ldflags.sh)
 build:
 	@echo "--> Building..."
 	@mkdir -p bin/
-	go build -v -o bin/shift --ldflags '$(LDFLAGS)' src/cli/cli.go
+	go build -v -o bin/datatravel --ldflags '$(LDFLAGS)' src/datatravel/datatravel.go
 	@chmod 755 bin/*
 
 clean:
