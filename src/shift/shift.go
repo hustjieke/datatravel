@@ -9,6 +9,7 @@
 package shift
 
 import (
+	"config"
 	"fmt"
 	"strings"
 	"sync"
@@ -23,7 +24,7 @@ import (
 
 type Shift struct {
 	log           *xlog.Log
-	cfg           *Config
+	cfg           *config.Config
 	toPool        *Pool
 	fromPool      *Pool
 	canal         *canal.Canal
@@ -35,7 +36,7 @@ type Shift struct {
 	wg            sync.WaitGroup
 }
 
-func NewShift(log *xlog.Log, cfg *Config) *Shift {
+func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
 	log.Info("shift.cfg:%#v", cfg)
 	return &Shift{
 		log:           log,

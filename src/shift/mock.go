@@ -9,6 +9,7 @@
 package shift
 
 import (
+	"config"
 	"context"
 	"fmt"
 	"net/http"
@@ -23,7 +24,7 @@ var (
 	restfulPort = 8181
 
 	// Config for normal shift.
-	mockCfg = &Config{
+	mockCfg = &config.Config{
 		From:         "127.0.0.1:3306",
 		FromUser:     "root",
 		FromDatabase: "shift_test_from",
@@ -43,7 +44,7 @@ var (
 	}
 
 	// Config for system (mysql) shift.
-	mockCfgMysql = &Config{
+	mockCfgMysql = &config.Config{
 		From:         "127.0.0.1:3306",
 		FromUser:     "root",
 		FromDatabase: "mysql",
@@ -63,7 +64,7 @@ var (
 	}
 
 	// Config for xa shift.
-	mockCfgXa = &Config{
+	mockCfgXa = &config.Config{
 		From:         "127.0.0.1:3306",
 		FromUser:     "root",
 		FromDatabase: "shift_test_from",
@@ -83,7 +84,7 @@ var (
 	}
 
 	// Config for ddl shift.
-	mockCfgDDL = &Config{
+	mockCfgDDL = &config.Config{
 		From:         "127.0.0.1:3306",
 		FromUser:     "root",
 		FromDatabase: "shift_test_from",
@@ -103,7 +104,7 @@ var (
 	}
 )
 
-func mockShift(log *xlog.Log, cfg *Config, hasPK bool, initData bool, readonlyHanler mockHandler, shardshiftHandler mockHandler, throttleHandler mockHandler) (*Shift, func()) {
+func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, readonlyHanler mockHandler, shardshiftHandler mockHandler, throttleHandler mockHandler) (*Shift, func()) {
 	h := mockHttp(log, restfulPort, readonlyHanler, shardshiftHandler, throttleHandler)
 	shift := NewShift(log, cfg)
 
