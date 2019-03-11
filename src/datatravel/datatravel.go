@@ -22,6 +22,8 @@ import (
 )
 
 var (
+	toFlavor = flag.String("to-flavor", "", "Destination db flavor, like mysql/mariadb/radondb")
+
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
 	fromPassword = flag.String("from-password", "", "MySQL user password")
@@ -43,8 +45,8 @@ var (
 )
 
 func check(log *xlog.Log) {
-	if *from == "" || *fromUser == "" || *to == "" || *toUser == "" {
-		log.Panic("usage: shift --from=[host:port] --from-password=[password] -- to=[host:port] --to-user=[user] --to-password=[password] --cleanup=[false|true]")
+	if *toFlavor == "" || *from == "" || *fromUser == "" || *to == "" || *toUser == "" {
+		log.Panic("usage: datatravel --to-flavor=[radondb/mariadb/mysql] --from=[host:port] --from-password=[password] -- to=[host:port] --to-user=[user] --to-password=[password] --cleanup=[false|true]")
 	}
 }
 
@@ -63,6 +65,7 @@ func main() {
            At the end of a successful shift run prints "shift.completed.OK!".`)
 
 	cfg := &config.Config{
+		ToFlavor:     *toFlavor,
 		From:         *from,
 		FromUser:     *fromUser,
 		FromPassword: *fromPassword,

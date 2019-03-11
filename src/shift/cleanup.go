@@ -9,13 +9,14 @@
 package shift
 
 import (
+	"config"
 	"fmt"
 	"strings"
 
 	"github.com/siddontang/go-mysql/client"
 )
 
-// Cleanup used to clean up the table on the from who has shifted,
+// Cleanup used to clean up the tables on the from who has shifted,
 // Or cleanup the to tables who half shifted.
 // This func must be called after canal closed, otherwise it maybe replicated by canal.
 func (shift *Shift) Cleanup() {
@@ -34,15 +35,30 @@ func (shift *Shift) Cleanup() {
 	// Cleanup.
 	if shift.cfg.Cleanup {
 		if shift.allDone {
-			shift.cleanupFrom()
+			// Func cleanupFrom is use for shift big table between
+			// diffrent backends in RadonDB, it may be used in the future.
+			// shift.cleanupFrom()
+
+			// Now for safety of src data, we do not cleanup
+			log.Info("datatravel.all.done")
 		} else {
-			shift.cleanupTo()
+			switch shift.cfg.ToFlavor {
+			case config.ToMySQLFlavor:
+			case config.ToMariaDBFlavor:
+				// For Mysql and MariaDB, we drop all tables
+				shift.cleanupToByDrop()
+			case config.ToRadonDBFlavor:
+				// For RadonDB, we just truncate the tables as the tables
+				// in RadonDB are all created by users before migration
+				shift.cleanupToByTruncate()
+			}
 		}
 	}
 }
 
 // cleanupFrom used to cleanup the table on from.
-// This func was called after shift succuess with cfg.Cleanup=true.
+// This func was called after shift succuess with
+// cfg.Cleanup=true and used when migration table in RadonDB.
 func (shift *Shift) cleanupFrom() {
 	log := shift.log
 	cfg := shift.cfg
@@ -65,9 +81,10 @@ func (shift *Shift) cleanupFrom() {
 	log.Info("shift.cleanup.from.table.done...")
 }
 
-// cleanupTo used to cleanup the table on to.
-// This func was called when shift failed.
-func (shift *Shift) cleanupTo() {
+// cleanupToByDrop used to cleanup the tables on to.
+// This func was called when travel data failed.
+// used for MySQL/MariaDB-->MySQL/MariaDB
+func (shift *Shift) cleanupToByDrop() {
 	log := shift.log
 	cfg := shift.cfg
 
@@ -89,4 +106,32 @@ func (shift *Shift) cleanupTo() {
 		log.Info("shift.table.is.system.cleanup.skip...")
 	}
 	log.Info("shift.cleanup.to.done...")
+}
+
+// cleanupToByTruncate used to truncate tables in
+// RadonDB when we travel data failed.
+// used for MySQL/MariaDB-->RadonDB
+func (shift *Shift) cleanupToByTruncate() {
+	log := shift.log
+	cfg := shift.cfg
+
+	for db, tbls := range cfg.DBTablesMaps {
+		for _, tbl := range tbls {
+			log.Info("datatravel.cleanto.by.truncate[%s/%s]...", db, tbl)
+			to, err := client.Connect(cfg.To, cfg.ToUser, cfg.ToPassword, "")
+			if err != nil {
+				log.Error("datatravel.cleanup.to.connect.error:%+v", err)
+				return
+			}
+			defer to.Close()
+
+			// e.g. truncate sbtest1.benchyou0;
+			sql := fmt.Sprintf("truncate `%s`.`%s`", db, tbl)
+			if _, err := to.Execute(sql); err != nil {
+				log.Error("datatravel.truncate.to.execute[%s].error:%+v", sql, err)
+				return
+			}
+		}
+	}
+	log.Info("datatravel.truncate.to.done...")
 }

@@ -8,7 +8,16 @@
 
 package config
 
+// Use flavor for different destinations,
+const (
+	ToMySQLFlavor   = "mysql"
+	ToMariaDBFlavor = "mariadb"
+	ToRadonDBFlavor = "radondb"
+)
+
 type Config struct {
+	ToFlavor string
+
 	From         string
 	FromUser     string
 	FromPassword string
@@ -29,5 +38,5 @@ type Config struct {
 	Checksum  bool
 
 	Databases    []string
-	DBTablesMaps map[string][]string // key:db, value: db.tables
+	DBTablesMaps map[string][]string // key:db, value: tables
 }
