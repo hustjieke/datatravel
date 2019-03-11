@@ -172,6 +172,120 @@ func (shift *Shift) prepareTable() error {
 	return nil
 }
 
+// Used for flavor RadonDB
+func (shift *Shift) checkTableForRadonDB() error {
+	log := shift.log
+	cfg := shift.cfg
+
+	// From connection.
+	fromConn := shift.fromPool.Get()
+	defer shift.fromPool.Put(fromConn)
+
+	// To connection.
+	toConn := shift.toPool.Get()
+	defer shift.toPool.Put(toConn)
+
+	// Get databases
+	log.Info("shift.get.database...")
+	sql := "show databases;"
+	r, err := fromConn.Execute(sql)
+	if err != nil {
+		log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+		return err
+	}
+	for i := 0; i < r.RowNumber(); i++ {
+		str, _ := r.GetString(i, 0)
+		if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
+			cfg.Databases = append(cfg.Databases, str)
+		}
+	}
+	if len(cfg.Databases) == 0 {
+		return errors.New("no.database.to.shift")
+	}
+
+	// Check if db.table exist
+	for _, db := range cfg.Databases {
+		// Prepare database, check the database is not system database and create them.
+		log.Info("shift.prepare.database[%s]...", db)
+		sql := fmt.Sprintf("use %s", db)
+		r, err := toConn.Execute(sql)
+		if err != nil {
+			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+			return err
+		} else {
+			log.Info("shift.database.exists[%s]", db)
+		}
+
+		// Get from tables
+		sql = fmt.Sprintf("use `%s`", db)
+		r, err = fromConn.Execute(sql)
+		if err != nil {
+			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+			return err
+		}
+
+		sql = fmt.Sprintf("show tables")
+		r, err = fromConn.Execute(sql)
+		if err != nil {
+			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+			return err
+		}
+
+		var tables []string
+		for i := 0; i < r.RowNumber(); i++ {
+			str, _ := r.GetString(i, 0)
+			tables = append(tables, str)
+		}
+		cfg.DBTablesMaps[db] = tables
+		if len(tables) == 0 {
+			log.Error("shift.check.database.[%+v].no.tables", db)
+			continue // don`t need return err
+		}
+
+		// Check if RadonDB`s tables and fields are consistent with from
+		for _, tbl := range tables {
+			log.Info("shift.check.if.radondb.table[%s/%s].exist...", db, tbl)
+			sql = fmt.Sprintf("show create table `%s`.`%s`", db, tbl)
+			_, errFrom := fromConn.Execute(sql)
+			if errFrom != nil {
+				log.Error("shift.show.[%s].sql.[%s].error:%+v", cfg.From, sql, errFrom)
+				return errFrom
+			}
+		}
+		// TODO show columns from db.tbl resp error
+		/*
+		   for _, tbl := range tables {
+		       log.Info("shift.check.radondb.table[%s/%s]...", db, tbl)
+		       sql = fmt.Sprintf("show columns from `%s`.`%s`", db, tbl)
+		       rFrom, errFrom := fromConn.Execute(sql)
+		       if errFrom != nil {
+		           log.Error("shift.show.[%s].sql.[%s].error:%+v", cfg.From, sql, errFrom)
+		           return errFrom
+		       }
+		       rTo, errTo := toConn.Execute(sql)
+		       if errTo != nil {
+		           log.Error("shift.show.[%s].sql.[%s].error:%+v", cfg.From, sql, errTo)
+		           return errTo
+		       }
+
+		       if rFrom.ColumnNumber() == rTo.ColumnNumber() {
+		           for idx, field := range rFrom.Fields {
+		               if (string(field.Name) != string(rTo.Fields[idx].Name)) ||
+		                   (field.Type != rTo.Fields[idx].Type) {
+		                   errmsg := fmt.Sprintf("shift.check.db[%s],table[%s].columns.fields.not.consistent.with.from", db, tbl)
+		                   return errors.New(errmsg)
+		               }
+		           }
+		       } else {
+		           errmsg := fmt.Sprintf("shift.check.db[%s],table[%s].columns.size.not.consistent.with.from", db, tbl)
+		           return errors.New(errmsg)
+		       }
+		   }
+		*/
+	}
+	return nil
+}
+
 func (shift *Shift) prepareCanal() error {
 	log := shift.log
 	conf := shift.cfg
@@ -344,6 +458,15 @@ func (shift *Shift) Start() error {
 	}
 	if err := shift.prepareTable(); err != nil {
 		return err
+	}
+	if shift.cfg.ToFlavor == config.ToRadonDBFlavor {
+		if err := shift.checkTableForRadonDB(); err != nil {
+			return err
+		}
+	} else {
+		if err := shift.prepareTable(); err != nil {
+			return err
+		}
 	}
 	if err := shift.prepareCanal(); err != nil {
 		return err

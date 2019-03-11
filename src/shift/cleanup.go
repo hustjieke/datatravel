@@ -51,6 +51,8 @@ func (shift *Shift) Cleanup() {
 				// For RadonDB, we just truncate the tables as the tables
 				// in RadonDB are all created by users before migration
 				shift.cleanupToByTruncate()
+			default:
+				log.Error("shift.cleanup.not.support.flavor.:%+v", shift.cfg.ToFlavor)
 			}
 		}
 	}
