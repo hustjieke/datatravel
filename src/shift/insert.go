@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/XeLabs/go-mysqlstack/common"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 )
@@ -46,8 +47,18 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 				}
 			}
 
+			cols := common.NewBuffer(256)
+			len := len(e.Table.Columns)
+			for idx, col := range e.Table.Columns {
+				cols.WriteString(col.Name)
+				if idx != (len - 1) {
+					cols.WriteString(",")
+				}
+			}
+			columns, _ := cols.ReadStringNUL()
+
 			query := &Query{
-				sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
+				sql:       fmt.Sprintf("insert into `%s`.`%s`(%s) values (%s)", e.Table.Schema, e.Table.Name, columns, strings.Join(values, ",")),
 				typ:       QueryType_INSERT,
 				skipError: systemTable,
 			}
