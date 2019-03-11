@@ -13,7 +13,6 @@ import (
 	"sync"
 	"xlog"
 
-	"github.com/XeLabs/go-mysqlstack/sqlparser"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/mysql"
@@ -73,27 +72,14 @@ func (h *EventHandler) OnRow(e *canal.RowsEvent) error {
 
 // OnDDL used to handle the QueryEvent and XAEvent.
 func (h *EventHandler) OnDDL(nextPos mysql.Position, e *replication.QueryEvent) error {
-	cfg := h.shift.cfg
+	log := h.log
 
 	switch e.Type {
 	case replication.QueryEvent_ALTER, replication.QueryEvent_CREATE, replication.QueryEvent_DROP, replication.QueryEvent_TRUNCATE:
-
-		if node, err := sqlparser.Parse(string(e.Query)); err == nil {
-			ddl := node.(*sqlparser.DDL)
-			if ddl.Table != nil {
-				var database string
-				if !ddl.Table.Qualifier.IsEmpty() {
-					database = ddl.Table.Qualifier.String()
-				} else {
-					database = string(e.Schema)
-				}
-				table := ddl.Table.Name.String()
-				// TODO:wait to confirm
-				if cfg.FromDatabase == database && cfg.FromTable == table {
-					h.shift.panicMe("shift.cant.do.ddl[%#v].during.shifting...", e)
-				}
-			}
-		}
+		log.Error("OnDDL.nextPos:", nextPos)
+		log.Error("ddl.sql.schema[%#v], sql[%#v]", string(e.Schema), string(e.Query))
+		// Now we don`t support ddl during dumping
+		h.shift.panicMe("can.not.do.ddl[%#v].during.dumping...", e)
 	case replication.QueryEvent_XA:
 		h.XAQuery(e)
 	}
