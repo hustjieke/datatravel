@@ -439,12 +439,8 @@ func (shift *Shift) behindsCheckStart() error {
 			behinds := int(masterPos.Pos - syncPos.Pos)
 			log.Info("--shift.check.behinds[%d]--master[%+v]--synced[%+v]", behinds, masterPos, syncPos)
 			if behinds <= shift.cfg.Behinds {
-				shift.setRadon()
+				shift.checkAndSetReadlock()
 				return
-			} else {
-				factor := float32(shift.cfg.Behinds+1) / float32(behinds+1)
-				log.Info("shift.set.throttle.behinds[%v].cfgbehinds[%v].factor[%v]", behinds, shift.cfg.Behinds, factor)
-				shift.setRadonThrottle(factor)
 			}
 		}
 	}(shift)
@@ -454,9 +450,6 @@ func (shift *Shift) behindsCheckStart() error {
 // Start used to start canal and behinds ticker.
 func (shift *Shift) Start() error {
 	if err := shift.prepareConnection(); err != nil {
-		return err
-	}
-	if err := shift.prepareTable(); err != nil {
 		return err
 	}
 	if shift.cfg.ToFlavor == config.ToRadonDBFlavor {
@@ -493,4 +486,59 @@ func (shift *Shift) Done() chan bool {
 func (shift *Shift) panicMe(format string, v ...interface{}) {
 	shift.Cleanup()
 	shift.panicHandler(shift.log, format, v)
+}
+
+func (shift *Shift) checkAndSetReadlock() {
+	log := shift.log
+
+	// 1. WaitUntilPos
+	{
+		masterPos := shift.masterPosition()
+		log.Info("shift.wait.until.pos[%#v]...", masterPos)
+		if err := shift.canal.WaitUntilPos(*masterPos, time.Hour*12); err != nil {
+			shift.panicMe("shift.set.radon.wait.until.pos[%#v].error:%+v", masterPos, err)
+			return
+		}
+		log.Info("shift.wait.until.pos.done...")
+	}
+
+	// 2. Add globle readlock
+	{
+		// TODO
+	}
+
+	// 3. Wait again
+	{
+		masterPos := shift.masterPosition()
+		log.Info("shift.wait.until.pos[%#v]...", masterPos)
+		if err := shift.canal.WaitUntilPos(*masterPos, time.Second*300); err != nil {
+			shift.panicMe("shift.wait.until.pos[%#v].error:%+v", masterPos, err)
+			return
+		}
+		log.Info("shift.wait.until.pos.done...")
+	}
+
+	// 4. Checksum table.
+	if shift.cfg.Checksum {
+		log.Info("shift.checksum.table...")
+		switch shift.cfg.ToFlavor {
+		case config.ToMySQLFlavor:
+		case config.ToMariaDBFlavor:
+			if err := shift.ChecksumTables(); err != nil {
+				shift.panicMe("shift.checksum.table.error:%+v", err)
+				return
+			}
+			log.Info("shift.checksum.table.done...")
+		case config.ToRadonDBFlavor:
+			// TODO RadonDB does not support checksum func, we choose some
+			// random tables and check result of "select count(*) from ...".
+		}
+	}
+
+	// 5. Good, we have all done.
+	{
+		shift.done <- true
+		shift.allDone = true
+		log.Info("shift.all.done...")
+	}
 }
