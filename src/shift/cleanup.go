@@ -22,24 +22,10 @@ import (
 func (shift *Shift) Cleanup() {
 	log := shift.log
 
-	// Set throttle to unlimits.
-	if err := shift.setRadonThrottle(0); err != nil {
-		log.Error("shift.cleanup.set.radon.throttle.error:%+v", err)
-	}
-
-	// Set readonly to false.
-	if err := shift.setRadonReadOnly(false); err != nil {
-		log.Error("shift.cleanup.set.radon.readonly.error:%+v", err)
-	}
-
 	// Cleanup.
 	if shift.cfg.Cleanup {
 		if shift.allDone {
-			// Func cleanupFrom is use for shift big table between
-			// diffrent backends in RadonDB, it may be used in the future.
-			// shift.cleanupFrom()
-
-			// Now for safety of src data, we do not cleanup
+			// Now for safety of data, we do not cleanup src data
 			log.Info("datatravel.all.done")
 		} else {
 			switch shift.cfg.ToFlavor {
