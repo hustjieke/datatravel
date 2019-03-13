@@ -33,7 +33,9 @@ type Shift struct {
 	handler       *EventHandler
 	allDone       bool
 	panicHandler  func(log *xlog.Log, format string, v ...interface{})
-	wg            sync.WaitGroup
+
+	// wg used for check when finish travel data
+	wg sync.WaitGroup
 }
 
 func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
@@ -173,7 +175,7 @@ func (shift *Shift) prepareTable() error {
 }
 
 // Used for flavor RadonDB
-func (shift *Shift) checkTableForRadonDB() error {
+func (shift *Shift) checkTableExistForRadonDB() error {
 	log := shift.log
 	cfg := shift.cfg
 
@@ -383,6 +385,63 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 	return nil
 }
 
+// Fuck CheckTableForRadonDB used to count tables
+func (shift *Shift) ChecksumTablesForRadonDB() error {
+	for db, tbls := range shift.cfg.DBTablesMaps {
+		shift.wg.Add(1)
+		go shift.checksumTablesForRadonDB(db, tbls)
+	}
+	shift.wg.Wait()
+	return nil
+}
+
+func (shift *Shift) checksumTablesForRadonDB(db string, tbls []string) error {
+	log := shift.log
+
+	var fromCount, toCount uint64
+
+	fromConn := shift.fromPool.Get()
+	defer shift.fromPool.Put(fromConn)
+
+	toConn := shift.toPool.Get()
+	defer shift.toPool.Put(toConn)
+
+	countFunc := func(flag string, conn *client.Conn, db string, tbl string, c chan uint64) {
+		// Use last table to count(*)
+		sql := fmt.Sprintf("select count(*) from %s.%s", db, tbl)
+		r, err := conn.Execute(sql)
+		if err != nil {
+			shift.panicMe("shift.count.%s.table[%s.%s].error:%+v", db, tbl, err)
+		}
+
+		v, err := r.GetUint(0, 0)
+		if err != nil {
+			shift.panicMe("shift.get.%s.table[%s.%s].checksum.error:%+v", db, tbl, err)
+		}
+		c <- v
+	}
+
+	fromchan := make(chan uint64, 1)
+	tochan := make(chan uint64, 1)
+	tbl := tbls[len(tbls)-1]
+	// execute countFunc
+	{
+		go countFunc("from", fromConn, db, tbl, fromchan)
+		go countFunc("to", toConn, db, tbl, tochan)
+	}
+	fromCount = <-fromchan
+	toCount = <-tochan
+
+	if fromCount != toCount {
+		err := fmt.Errorf("count(*).not equivalent: from-table[%s] count is %v, to-table[%s] count is %v", tbl, tbl, fromCount, toCount)
+		log.Error("shift.count(*).table.err:%+v", err)
+		return err
+	}
+
+	shift.wg.Wait()
+	return nil
+}
+
 /*
    mysql> show master status;
    +------------------+-----------+--------------+------------------+------------------------------------------------+
@@ -453,7 +512,7 @@ func (shift *Shift) Start() error {
 		return err
 	}
 	if shift.cfg.ToFlavor == config.ToRadonDBFlavor {
-		if err := shift.checkTableForRadonDB(); err != nil {
+		if err := shift.checkTableExistForRadonDB(); err != nil {
 			return err
 		}
 	} else {
@@ -533,10 +592,10 @@ func (shift *Shift) checkAndSetReadlock() {
 
 	// 4. Checksum table.
 	if shift.cfg.Checksum {
-		log.Info("shift.checksum.table...")
 		switch shift.cfg.ToFlavor {
 		case config.ToMySQLFlavor:
 		case config.ToMariaDBFlavor:
+			log.Info("shift.checksum.table...")
 			if err := shift.ChecksumTables(); err != nil {
 				shift.panicMe("shift.checksum.table.error:%+v", err)
 				return
@@ -545,6 +604,14 @@ func (shift *Shift) checkAndSetReadlock() {
 		case config.ToRadonDBFlavor:
 			// TODO RadonDB does not support checksum func, we choose some
 			// random tables and check result of "select count(*) from ...".
+			log.Info("check.count.table...")
+			if err := shift.ChecksumTablesForRadonDB(); err != nil {
+				shift.panicMe("shift.check.table.error:%+v", err)
+				return
+			}
+			log.Info("shift.check.count.table.done...")
+		default:
+			log.Error("shift.cleanup.not.support.flavor.:%+v", shift.cfg.ToFlavor)
 		}
 	}
 

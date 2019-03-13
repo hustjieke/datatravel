@@ -47,6 +47,7 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 				}
 			}
 
+			// TODO if not travel RadonDB, we don`t need to add columns
 			cols := common.NewBuffer(256)
 			len := len(e.Table.Columns)
 			for idx, col := range e.Table.Columns {

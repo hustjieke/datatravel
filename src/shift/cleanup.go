@@ -106,8 +106,8 @@ func (shift *Shift) cleanupToByTruncate() {
 			}
 			defer to.Close()
 
-			// e.g. truncate sbtest1.benchyou0;
-			sql := fmt.Sprintf("truncate `%s`.`%s`", db, tbl)
+			// e.g. truncate table sbtest1.benchyou0;
+			sql := fmt.Sprintf("truncate table `%s`.`%s`", db, tbl)
 			if _, err := to.Execute(sql); err != nil {
 				log.Error("datatravel.truncate.to.execute[%s].error:%+v", sql, err)
 				return
