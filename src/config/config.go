@@ -16,7 +16,8 @@ const (
 )
 
 type Config struct {
-	ToFlavor string
+	ToFlavor          string
+	SetGlobalReadLock bool
 
 	From         string
 	FromUser     string

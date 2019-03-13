@@ -476,7 +476,15 @@ func (shift *Shift) Close() {
 	shift.fromPool.Close()
 	shift.toPool.Close()
 	shift.canal.Close()
-	shift.Cleanup()
+
+	// If travel success, we do not cleanup on from
+	// If travel failed, we do cleanup on to and unlock tables on from
+	if !shift.allDone {
+		if shift.cfg.Cleanup {
+			shift.Cleanup()
+		}
+		shift.unLockTables()
+	}
 }
 
 func (shift *Shift) Done() chan bool {
@@ -502,9 +510,14 @@ func (shift *Shift) checkAndSetReadlock() {
 		log.Info("shift.wait.until.pos.done...")
 	}
 
-	// 2. Add globle readlock
+	// 2. Set a global read lock on from
 	{
-		// TODO
+		if shift.cfg.SetGlobalReadLock {
+			log.Info("set.from.a.global.read.lock")
+			shift.setGlobalReadLock()
+		} else {
+			log.Info("continue.travel.without.set.global.read.lock")
+		}
 	}
 
 	// 3. Wait again
@@ -540,5 +553,36 @@ func (shift *Shift) checkAndSetReadlock() {
 		shift.done <- true
 		shift.allDone = true
 		log.Info("shift.all.done...")
+	}
+}
+
+// Func setGlobalReadLock is used to add a global read
+// lock to "from" when ( master position - syncer position) is less than 2048
+func (shift *Shift) setGlobalReadLock() {
+	sql1 := "FLUSH TABLES"
+	sql2 := "FLUSH TABLES WITH READ LOCK"
+	fromConn := shift.fromPool.Get()
+	defer shift.fromPool.Put(fromConn)
+
+	if _, err := fromConn.Execute(sql1); err != nil {
+		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql1, err)
+		return
+	}
+	if _, err := fromConn.Execute(sql2); err != nil {
+		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql2, err)
+		return
+	}
+}
+
+// Func unLockTables is used to unlock tables on from.
+// It will be called when travel data failed.
+func (shift *Shift) unLockTables() {
+	sql := "UNLOCK TABLES"
+	fromConn := shift.fromPool.Get()
+	defer shift.fromPool.Put(fromConn)
+
+	if _, err := fromConn.Execute(sql); err != nil {
+		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql, err)
+		return
 	}
 }

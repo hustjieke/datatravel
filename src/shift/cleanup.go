@@ -23,24 +23,17 @@ func (shift *Shift) Cleanup() {
 	log := shift.log
 
 	// Cleanup.
-	if shift.cfg.Cleanup {
-		if shift.allDone {
-			// Now for safety of data, we do not cleanup src data
-			log.Info("datatravel.all.done")
-		} else {
-			switch shift.cfg.ToFlavor {
-			case config.ToMySQLFlavor:
-			case config.ToMariaDBFlavor:
-				// For Mysql and MariaDB, we drop all tables
-				shift.cleanupToByDrop()
-			case config.ToRadonDBFlavor:
-				// For RadonDB, we just truncate the tables as the tables
-				// in RadonDB are all created by users before migration
-				shift.cleanupToByTruncate()
-			default:
-				log.Error("shift.cleanup.not.support.flavor.:%+v", shift.cfg.ToFlavor)
-			}
-		}
+	switch shift.cfg.ToFlavor {
+	case config.ToMySQLFlavor:
+	case config.ToMariaDBFlavor:
+		// For Mysql and MariaDB, we drop all tables
+		shift.cleanupToByDrop()
+	case config.ToRadonDBFlavor:
+		// For RadonDB, we just truncate the tables as the tables
+		// in RadonDB are all created by users before migration
+		shift.cleanupToByTruncate()
+	default:
+		log.Error("shift.cleanup.not.support.flavor.:%+v", shift.cfg.ToFlavor)
 	}
 }
 
