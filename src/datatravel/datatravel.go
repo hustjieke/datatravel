@@ -22,7 +22,8 @@ import (
 )
 
 var (
-	toFlavor = flag.String("to-flavor", "", "Destination db flavor, like mysql/mariadb/radondb")
+	toFlavor          = flag.String("to-flavor", "", "Destination db flavor, like mysql/mariadb/radondb")
+	setGlobalReadLock = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
 
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
@@ -65,23 +66,24 @@ func main() {
            At the end of a successful shift run prints "shift.completed.OK!".`)
 
 	cfg := &config.Config{
-		ToFlavor:     *toFlavor,
-		From:         *from,
-		FromUser:     *fromUser,
-		FromPassword: *fromPassword,
-		FromDatabase: *fromDatabase,
-		FromTable:    *fromTable,
-		To:           *to,
-		ToUser:       *toUser,
-		ToPassword:   *toPassword,
-		ToDatabase:   *toDatabase,
-		ToTable:      *toTable,
-		Cleanup:      *cleanup,
-		MySQLDump:    *mysqlDump,
-		Threads:      *threads,
-		Behinds:      *behinds,
-		RadonURL:     *radonURL,
-		Checksum:     *checksum,
+		ToFlavor:          *toFlavor,
+		SetGlobalReadLock: *setGlobalReadLock,
+		From:              *from,
+		FromUser:          *fromUser,
+		FromPassword:      *fromPassword,
+		FromDatabase:      *fromDatabase,
+		FromTable:         *fromTable,
+		To:                *to,
+		ToUser:            *toUser,
+		ToPassword:        *toPassword,
+		ToDatabase:        *toDatabase,
+		ToTable:           *toTable,
+		Cleanup:           *cleanup,
+		MySQLDump:         *mysqlDump,
+		Threads:           *threads,
+		Behinds:           *behinds,
+		RadonURL:          *radonURL,
+		Checksum:          *checksum,
 	}
 	cfg.DBTablesMaps = make(map[string][]string)
 	log.Info("shift.cfg:%+v", cfg)
