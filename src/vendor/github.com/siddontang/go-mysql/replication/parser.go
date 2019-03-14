@@ -2,25 +2,21 @@ package replication
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
-	"sync"
+	"sync/atomic"
+	"time"
 
-	"github.com/juju/errors"
-	"github.com/ngaut/log"
-	"github.com/siddontang/go-mysql/client"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/schema"
+	"github.com/pingcap/errors"
 )
 
-type Config struct {
-	addr     string
-	user     string
-	password string
-	database string
-	table    string
-}
+var (
+	// ErrChecksumMismatch indicates binlog checksum mismatch.
+	ErrChecksumMismatch = errors.New("binlog checksum mismatch, data may be corrupted")
+)
 
 type BinlogParser struct {
 	format *FormatDescriptionEvent
@@ -30,25 +26,31 @@ type BinlogParser struct {
 	// for rawMode, we only parse FormatDescriptionEvent and RotateEvent
 	rawMode bool
 
-	parseTime bool
+	parseTime               bool
+	timestampStringLocation *time.Location
 
-	cfg *Config
+	// used to start/stop processing
+	stopProcessing uint32
 
-	connLock sync.Mutex
-	conn     *client.Conn
-
-	tableLock   sync.RWMutex
-	tableSchema map[string]*schema.Table
+	useDecimal          bool
+	ignoreJSONDecodeErr bool
+	verifyChecksum      bool
 }
 
 func NewBinlogParser() *BinlogParser {
 	p := new(BinlogParser)
 
 	p.tables = make(map[uint64]*TableMapEvent)
-	p.tableSchema = make(map[string]*schema.Table)
-	p.cfg = new(Config)
 
 	return p
+}
+
+func (p *BinlogParser) Stop() {
+	atomic.StoreUint32(&p.stopProcessing, 1)
+}
+
+func (p *BinlogParser) Resume() {
+	atomic.StoreUint32(&p.stopProcessing, 0)
 }
 
 func (p *BinlogParser) Reset() {
@@ -73,6 +75,15 @@ func (p *BinlogParser) ParseFile(name string, offset int64, onEvent OnEventFunc)
 
 	if offset < 4 {
 		offset = 4
+	} else if offset > 4 {
+		//  FORMAT_DESCRIPTION event should be read by default always (despite that fact passed offset may be higher than 4)
+		if _, err = f.Seek(4, os.SEEK_SET); err != nil {
+			return errors.Errorf("seek %s to %d error %v", name, offset, err)
+		}
+
+		if err = p.parseFormatDescriptionEvent(f, onEvent); err != nil {
+			return errors.Annotatef(err, "parse FormatDescriptionEvent")
+		}
 	}
 
 	if _, err = f.Seek(offset, os.SEEK_SET); err != nil {
@@ -82,55 +93,83 @@ func (p *BinlogParser) ParseFile(name string, offset int64, onEvent OnEventFunc)
 	return p.ParseReader(f, onEvent)
 }
 
-func (p *BinlogParser) ParseReader(r io.Reader, onEvent OnEventFunc) error {
+func (p *BinlogParser) parseFormatDescriptionEvent(r io.Reader, onEvent OnEventFunc) error {
+	_, err := p.parseSingleEvent(r, onEvent)
+	return err
+}
+
+// ParseSingleEvent parses single binlog event and passes the event to onEvent function.
+func (p *BinlogParser) ParseSingleEvent(r io.Reader, onEvent OnEventFunc) (bool, error) {
+	return p.parseSingleEvent(r, onEvent)
+}
+
+func (p *BinlogParser) parseSingleEvent(r io.Reader, onEvent OnEventFunc) (bool, error) {
 	var err error
 	var n int64
 
+	var buf bytes.Buffer
+	if n, err = io.CopyN(&buf, r, EventHeaderSize); err == io.EOF {
+		return true, nil
+	} else if err != nil {
+		return false, errors.Errorf("get event header err %v, need %d but got %d", err, EventHeaderSize, n)
+	}
+
+	var h *EventHeader
+	h, err = p.parseHeader(buf.Bytes())
+	if err != nil {
+		return false, errors.Trace(err)
+	}
+
+	if h.EventSize <= uint32(EventHeaderSize) {
+		return false, errors.Errorf("invalid event header, event size is %d, too small", h.EventSize)
+	}
+	if n, err = io.CopyN(&buf, r, int64(h.EventSize-EventHeaderSize)); err != nil {
+		return false, errors.Errorf("get event err %v, need %d but got %d", err, h.EventSize, n)
+	}
+	if buf.Len() != int(h.EventSize) {
+		return false, errors.Errorf("invalid raw data size in event %s, need %d but got %d", h.EventType, h.EventSize, buf.Len())
+	}
+
+	rawData := buf.Bytes()
+	bodyLen := int(h.EventSize) - EventHeaderSize
+	body := rawData[EventHeaderSize:]
+	if len(body) != bodyLen {
+		return false, errors.Errorf("invalid body data size in event %s, need %d but got %d", h.EventType, bodyLen, len(body))
+	}
+
+	var e Event
+	e, err = p.parseEvent(h, body, rawData)
+	if err != nil {
+		if err == errMissingTableMapEvent {
+			return false, nil
+		}
+		return false, errors.Trace(err)
+	}
+
+	if err = onEvent(&BinlogEvent{RawData: rawData, Header: h, Event: e}); err != nil {
+		return false, errors.Trace(err)
+	}
+
+	return false, nil
+}
+
+func (p *BinlogParser) ParseReader(r io.Reader, onEvent OnEventFunc) error {
+
 	for {
-		headBuf := make([]byte, EventHeaderSize)
-
-		if _, err = io.ReadFull(r, headBuf); err == io.EOF {
-			return nil
-		} else if err != nil {
-			return errors.Trace(err)
+		if atomic.LoadUint32(&p.stopProcessing) == 1 {
+			break
 		}
 
-		var h *EventHeader
-		h, err = p.parseHeader(headBuf)
+		done, err := p.parseSingleEvent(r, onEvent)
 		if err != nil {
-			return errors.Trace(err)
-		}
-
-		if h.EventSize <= uint32(EventHeaderSize) {
-			return errors.Errorf("invalid event header, event size is %d, too small", h.EventSize)
-
-		}
-
-		var buf bytes.Buffer
-		if n, err = io.CopyN(&buf, r, int64(h.EventSize)-int64(EventHeaderSize)); err != nil {
-			return errors.Errorf("get event body err %v, need %d - %d, but got %d", err, h.EventSize, EventHeaderSize, n)
-		}
-
-		data := buf.Bytes()
-		rawData := data
-
-		eventLen := int(h.EventSize) - EventHeaderSize
-
-		if len(data) != eventLen {
-			return errors.Errorf("invalid data size %d in event %s, less event length %d", len(data), h.EventType, eventLen)
-		}
-
-		var e Event
-		e, err = p.parseEvent(h, data)
-		if err != nil {
-			if _, ok := err.(errMissingTableMapEvent); ok {
+			if err == errMissingTableMapEvent {
 				continue
 			}
 			return errors.Trace(err)
 		}
 
-		if err = onEvent(&BinlogEvent{rawData, h, e}); err != nil {
-			return errors.Trace(err)
+		if done {
+			break
 		}
 	}
 
@@ -145,21 +184,20 @@ func (p *BinlogParser) SetParseTime(parseTime bool) {
 	p.parseTime = parseTime
 }
 
-func (p *BinlogParser) SetParseCfg(cfg *BinlogSyncerConfig) {
-	p.cfg.addr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	p.cfg.user = cfg.User
-	p.cfg.password = cfg.Password
-	p.cfg.database = cfg.Database
-	p.cfg.table = cfg.Table
+func (p *BinlogParser) SetTimestampStringLocation(timestampStringLocation *time.Location) {
+	p.timestampStringLocation = timestampStringLocation
 }
 
-func (p *BinlogParser) SetParseTabMap() {
-	log.Infof("BinlogParser.SetParseTabMap.GetTable[%s.%s]...", p.cfg.database, p.cfg.table)
-	// Prepare table schema for RowsEvent Decode
-	// if _, err := p.GetTable(p.cfg.database, p.cfg.table); err != nil {
-	// 	log.Fatalf("BinlogParser.SetParseTabMap.GetTable[%s.%s].error:%+v", p.cfg.database, p.cfg.table, err)
-	// }
-	log.Infof("BinlogParser.SetParseTabMap.GetTable[%s.%s].done...", p.cfg.database, p.cfg.table)
+func (p *BinlogParser) SetUseDecimal(useDecimal bool) {
+	p.useDecimal = useDecimal
+}
+
+func (p *BinlogParser) SetIgnoreJSONDecodeError(ignoreJSONDecodeErr bool) {
+	p.ignoreJSONDecodeErr = ignoreJSONDecodeErr
+}
+
+func (p *BinlogParser) SetVerifyChecksum(verify bool) {
+	p.verifyChecksum = verify
 }
 
 func (p *BinlogParser) parseHeader(data []byte) (*EventHeader, error) {
@@ -172,7 +210,7 @@ func (p *BinlogParser) parseHeader(data []byte) (*EventHeader, error) {
 	return h, nil
 }
 
-func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
+func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (Event, error) {
 	var e Event
 
 	if h.EventType == FORMAT_DESCRIPTION_EVENT {
@@ -180,7 +218,11 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 		e = p.format
 	} else {
 		if p.format != nil && p.format.ChecksumAlgorithm == BINLOG_CHECKSUM_ALG_CRC32 {
-			data = data[0 : len(data)-4]
+			err := p.verifyCrc32Checksum(rawData)
+			if err != nil {
+				return nil, err
+			}
+			data = data[0 : len(data)-BinlogChecksumLength]
 		}
 
 		if h.EventType == ROTATE_EVENT {
@@ -191,8 +233,6 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 				e = &QueryEvent{}
 			case XID_EVENT:
 				e = &XIDEvent{}
-			case XA_PREPARE_LOG_EVENT:
-				e = &XAPrepareEvent{}
 			case TABLE_MAP_EVENT:
 				te := &TableMapEvent{}
 				if p.format.EventTypeHeaderLengths[TABLE_MAP_EVENT-1] == 6 {
@@ -215,12 +255,14 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 				e = &RowsQueryEvent{}
 			case GTID_EVENT:
 				e = &GTIDEvent{}
+			case ANONYMOUS_GTID_EVENT:
+				e = &GTIDEvent{}
 			case BEGIN_LOAD_QUERY_EVENT:
 				e = &BeginLoadQueryEvent{}
 			case EXECUTE_LOAD_QUERY_EVENT:
 				e = &ExecuteLoadQueryEvent{}
 			case MARIADB_ANNOTATE_ROWS_EVENT:
-				e = &MariadbAnnotaeRowsEvent{}
+				e = &MariadbAnnotateRowsEvent{}
 			case MARIADB_BINLOG_CHECKPOINT_EVENT:
 				e = &MariadbBinlogCheckPointEvent{}
 			case MARIADB_GTID_LIST_EVENT:
@@ -229,6 +271,8 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 				ee := &MariadbGTIDEvent{}
 				ee.GTID.ServerID = h.ServerID
 				e = ee
+			case XA_PREPARE_LOG_EVENT:
+				e = &XAPrepareEvent{}
 			default:
 				e = &GenericEvent{}
 			}
@@ -255,7 +299,7 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte) (Event, error) {
 	return e, nil
 }
 
-// Given the bytes for a a binary log event: return the decoded event.
+// Parse: Given the bytes for a a binary log event: return the decoded event.
 // With the exception of the FORMAT_DESCRIPTION_EVENT event type
 // there must have previously been passed a FORMAT_DESCRIPTION_EVENT
 // into the parser for this to work properly on any given event.
@@ -277,12 +321,32 @@ func (p *BinlogParser) Parse(data []byte) (*BinlogEvent, error) {
 		return nil, fmt.Errorf("invalid data size %d in event %s, less event length %d", len(data), h.EventType, eventLen)
 	}
 
-	e, err := p.parseEvent(h, data)
+	e, err := p.parseEvent(h, data, rawData)
 	if err != nil {
 		return nil, err
 	}
 
-	return &BinlogEvent{rawData, h, e}, nil
+	return &BinlogEvent{RawData: rawData, Header: h, Event: e}, nil
+}
+
+func (p *BinlogParser) verifyCrc32Checksum(rawData []byte) error {
+	if !p.verifyChecksum {
+		return nil
+	}
+
+	calculatedPart := rawData[0 : len(rawData)-BinlogChecksumLength]
+	expectedChecksum := rawData[len(rawData)-BinlogChecksumLength:]
+
+	// mysql use zlib's CRC32 implementation, which uses polynomial 0xedb88320UL.
+	// reference: https://github.com/madler/zlib/blob/master/crc32.c
+	// https://github.com/madler/zlib/blob/master/doc/rfc1952.txt#L419
+	checksum := crc32.ChecksumIEEE(calculatedPart)
+	computed := make([]byte, BinlogChecksumLength)
+	binary.LittleEndian.PutUint32(computed, checksum)
+	if !bytes.Equal(expectedChecksum, computed) {
+		return ErrChecksumMismatch
+	}
+	return nil
 }
 
 func (p *BinlogParser) newRowsEvent(h *EventHeader) *RowsEvent {
@@ -296,7 +360,9 @@ func (p *BinlogParser) newRowsEvent(h *EventHeader) *RowsEvent {
 	e.needBitmap2 = false
 	e.tables = p.tables
 	e.parseTime = p.parseTime
-	e.TableSchema = p.tableSchema
+	e.timestampStringLocation = p.timestampStringLocation
+	e.useDecimal = p.useDecimal
+	e.ignoreJSONDecodeErr = p.ignoreJSONDecodeErr
 
 	switch h.EventType {
 	case WRITE_ROWS_EVENTv0:
@@ -322,59 +388,4 @@ func (p *BinlogParser) newRowsEvent(h *EventHeader) *RowsEvent {
 	}
 
 	return e
-}
-
-func (p *BinlogParser) GetTable(db string, table string) (*schema.Table, error) {
-	key := fmt.Sprintf("%s.%s", db, table)
-	p.tableLock.RLock()
-	t, ok := p.tableSchema[key]
-	p.tableLock.RUnlock()
-
-	if ok {
-		return t, nil
-	}
-
-	t, err := schema.NewTable(p, db, table)
-	if err != nil {
-		// check table not exists
-		if ok, err1 := schema.IsTableExist(p, db, table); err1 == nil && !ok {
-			return nil, schema.ErrTableNotExist
-		}
-
-		return nil, errors.Trace(err)
-	}
-
-	p.tableLock.Lock()
-	p.tableSchema[key] = t
-	p.tableLock.Unlock()
-
-	return t, nil
-}
-
-// Execute a SQL
-func (p *BinlogParser) Execute(cmd string, args ...interface{}) (rr *mysql.Result, err error) {
-	p.connLock.Lock()
-	defer p.connLock.Unlock()
-
-	retryNum := 3
-	for i := 0; i < retryNum; i++ {
-		if p.conn == nil {
-			p.conn, err = client.Connect(p.cfg.addr, p.cfg.user, p.cfg.password, "")
-			if err != nil {
-				return nil, errors.Trace(err)
-			}
-		}
-
-		rr, err = p.conn.Execute(cmd, args...)
-		if err != nil && !mysql.ErrorEqual(err, mysql.ErrBadConn) {
-			return
-		} else if mysql.ErrorEqual(err, mysql.ErrBadConn) {
-			p.conn.Close()
-			p.conn = nil
-			continue
-		} else {
-			return
-		}
-	}
-	return
 }

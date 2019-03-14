@@ -1,12 +1,13 @@
 package canal
 
 import (
-	"github.com/BurntSushi/toml"
-	"github.com/juju/errors"
-	"github.com/siddontang/go-mysql/mysql"
 	"io/ioutil"
 	"math/rand"
 	"time"
+
+	"github.com/BurntSushi/toml"
+	"github.com/pingcap/errors"
+	"github.com/siddontang/go-mysql/mysql"
 )
 
 type DumpConfig struct {
@@ -23,8 +24,21 @@ type DumpConfig struct {
 	// Ignore table format is db.table
 	IgnoreTables []string `toml:"ignore_tables"`
 
+	// Dump only selected records. Quotes are mandatory
+	Where string `toml:"where"`
+
 	// If true, discard error msg, else, output to stderr
 	DiscardErr bool `toml:"discard_err"`
+
+	// Set true to skip --master-data if we have no privilege to do
+	// 'FLUSH TABLES WITH READ LOCK'
+	SkipMasterData bool `toml:"skip_master_data"`
+
+	// Set to change the default max_allowed_packet size
+	MaxAllowedPacketMB int `toml:"max_allowed_packet_mb"`
+
+	// Set to change the default protocol to connect with
+	Protocol string `toml:"protocol"`
 }
 
 type Config struct {
@@ -32,11 +46,34 @@ type Config struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 
-	Charset  string `toml:"charset"`
-	ServerID uint32 `toml:"server_id"`
-	Flavor   string `toml:"flavor"`
+	Charset         string        `toml:"charset"`
+	ServerID        uint32        `toml:"server_id"`
+	Flavor          string        `toml:"flavor"`
+	HeartbeatPeriod time.Duration `toml:"heartbeat_period"`
+	ReadTimeout     time.Duration `toml:"read_timeout"`
+
+	// IncludeTableRegex or ExcludeTableRegex should contain database name
+	// Only a table which matches IncludeTableRegex and dismatches ExcludeTableRegex will be processed
+	// eg, IncludeTableRegex : [".*\\.canal"], ExcludeTableRegex : ["mysql\\..*"]
+	//     this will include all database's 'canal' table, except database 'mysql'
+	// Default IncludeTableRegex and ExcludeTableRegex are empty, this will include all tables
+	IncludeTableRegex []string `toml:"include_table_regex"`
+	ExcludeTableRegex []string `toml:"exclude_table_regex"`
+
+	// discard row event without table meta
+	DiscardNoMetaRowEvent bool `toml:"discard_no_meta_row_event"`
 
 	Dump DumpConfig `toml:"dump"`
+
+	UseDecimal bool `toml:"use_decimal"`
+	ParseTime  bool `toml:"parse_time"`
+
+	// SemiSyncEnabled enables semi-sync or not.
+	SemiSyncEnabled bool `toml:"semi_sync_enabled"`
+
+	// Set to change the maximum number of attempts to re-establish a broken
+	// connection
+	MaxReconnectAttempts int `toml:"max_reconnect_attempts"`
 }
 
 func NewConfigWithFile(name string) (*Config, error) {
@@ -67,13 +104,13 @@ func NewDefaultConfig() *Config {
 	c.Password = ""
 
 	c.Charset = mysql.DEFAULT_CHARSET
-	rand.Seed(time.Now().Unix())
-	c.ServerID = uint32(rand.Intn(1000)) + 1001
+	c.ServerID = uint32(rand.New(rand.NewSource(time.Now().Unix())).Intn(1000)) + 1001
 
 	c.Flavor = "mysql"
 
 	c.Dump.ExecutionPath = "mysqldump"
 	c.Dump.DiscardErr = true
+	c.Dump.SkipMasterData = false
 
 	return c
 }

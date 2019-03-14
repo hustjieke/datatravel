@@ -10,21 +10,23 @@
 package driver
 
 import (
+	"context"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/XeLabs/go-mysqlstack/common"
-	"github.com/XeLabs/go-mysqlstack/packet"
-	"github.com/XeLabs/go-mysqlstack/proto"
-	"github.com/XeLabs/go-mysqlstack/sqldb"
+	"github.com/xelabs/go-mysqlstack/common"
+	"github.com/xelabs/go-mysqlstack/packet"
+	"github.com/xelabs/go-mysqlstack/proto"
+	"github.com/xelabs/go-mysqlstack/sqldb"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/sqltypes"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/sqltypes"
 )
 
 var _ Conn = &conn{}
 
+// Conn interface.
 type Conn interface {
 	Ping() error
 	Quit()
@@ -36,6 +38,8 @@ type Conn interface {
 	// ConnectionID is the connection id at greeting.
 	ConnectionID() uint32
 
+	InitDB(db string) error
+	Command(command byte) error
 	// Query get the row cursor.
 	Query(sql string) (Rows, error)
 	Exec(sql string) error
@@ -128,13 +132,21 @@ func (c *conn) handShake(username, password, database, charset string) error {
 
 // NewConn used to create a new client connection.
 // The timeout is 30 seconds.
-func NewConn(username, password, address, database, charset string) (*conn, error) {
+func NewConn(username, password, address, database, charset string) (Conn, error) {
 	var err error
 	c := &conn{}
 	timeout := time.Duration(30) * time.Second
 	if c.netConn, err = net.DialTimeout("tcp", address, timeout); err != nil {
 		return nil, err
 	}
+
+	// Set KeepAlive to True and period to 180s.
+	if tcpConn, ok := c.netConn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(time.Second * 180)
+		c.netConn = tcpConn
+	}
+
 	defer func() {
 		if err != nil {
 			c.Cleanup()
@@ -215,11 +227,7 @@ func (c *conn) Ping() error {
 	if err != nil {
 		return err
 	}
-
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	return nil
+	return rows.Close()
 }
 
 func (c *conn) InitDB(db string) error {
@@ -227,12 +235,7 @@ func (c *conn) InitDB(db string) error {
 	if err != nil {
 		return err
 	}
-
-	if err := rows.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return rows.Close()
 }
 
 // Exec executes the query and drain the results
@@ -327,7 +330,6 @@ func (c *conn) Quit() {
 
 func (c *conn) Cleanup() {
 	if c.netConn != nil {
-		c.Quit()
 		c.netConn.Close()
 		c.netConn = nil
 	}
@@ -336,7 +338,23 @@ func (c *conn) Cleanup() {
 // Close closes the connection
 func (c *conn) Close() error {
 	if c != nil && c.netConn != nil {
-		c.Cleanup()
+		quitCh := make(chan struct{})
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+		defer cancel()
+
+		// First to send quit, if quit timeout force to do cleanup.
+		go func(c *conn) {
+			c.Quit()
+			close(quitCh)
+		}(c)
+
+		select {
+		case <-ctx.Done():
+			c.Cleanup()
+			close(quitCh)
+		case <-quitCh:
+			c.Cleanup()
+		}
 	}
 	return nil
 }

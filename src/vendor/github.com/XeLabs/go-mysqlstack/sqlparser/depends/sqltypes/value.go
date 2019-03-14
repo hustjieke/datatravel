@@ -7,15 +7,14 @@ package sqltypes
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/hack"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/hack"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
 )
 
 var (
@@ -36,7 +35,7 @@ type BinWriter interface {
 }
 
 // Value can store any SQL value. If the value represents
-// an integral type, the bytes are always stored as a cannonical
+// an integral type, the bytes are always stored as a canonical
 // representation that matches how MySQL returns such values.
 type Value struct {
 	typ querypb.Type
@@ -44,7 +43,7 @@ type Value struct {
 }
 
 // MakeTrusted makes a new Value based on the type.
-// If the value is an integral, then val must be in its cannonical
+// If the value is an integral, then val must be in its canonical
 // form. This function should only be used if you know the value
 // and type conform to the rules.  Every place this function is
 // called, a comment is needed that explains why it's justified.
@@ -54,6 +53,51 @@ func MakeTrusted(typ querypb.Type, val []byte) Value {
 		return NULL
 	}
 	return Value{typ: typ, val: val}
+}
+
+// NewInt64 builds an Int64 Value.
+func NewInt64(v int64) Value {
+	return MakeTrusted(Int64, strconv.AppendInt(nil, v, 10))
+}
+
+// NewInt32 builds an Int64 Value.
+func NewInt32(v int32) Value {
+	return MakeTrusted(Int32, strconv.AppendInt(nil, int64(v), 10))
+}
+
+// NewUint64 builds an Uint64 Value.
+func NewUint64(v uint64) Value {
+	return MakeTrusted(Uint64, strconv.AppendUint(nil, v, 10))
+}
+
+// NewFloat64 builds an Float64 Value.
+func NewFloat64(v float64) Value {
+	return MakeTrusted(Float64, strconv.AppendFloat(nil, v, 'g', -1, 64))
+}
+
+// NewVarChar builds a VarChar Value.
+func NewVarChar(v string) Value {
+	return MakeTrusted(VarChar, []byte(v))
+}
+
+// NewVarBinary builds a VarBinary Value.
+// The input is a string because it's the most common use case.
+func NewVarBinary(v string) Value {
+	return MakeTrusted(VarBinary, []byte(v))
+}
+
+// NewIntegral builds an integral type from a string representation.
+// The type will be Int64 or Uint64. Int64 will be preferred where possible.
+func NewIntegral(val string) (n Value, err error) {
+	signed, err := strconv.ParseInt(val, 0, 64)
+	if err == nil {
+		return MakeTrusted(Int64, strconv.AppendInt(nil, signed, 10)), nil
+	}
+	unsigned, err := strconv.ParseUint(val, 0, 64)
+	if err != nil {
+		return Value{}, err
+	}
+	return MakeTrusted(Uint64, strconv.AppendUint(nil, unsigned, 10)), nil
 }
 
 // MakeString makes a VarBinary Value.
@@ -130,7 +174,7 @@ func BuildConverted(typ querypb.Type, goval interface{}) (v Value, err error) {
 
 // ValueFromBytes builds a Value using typ and val. It ensures that val
 // matches the requested type. If type is an integral it's converted to
-// a cannonical form. Otherwise, the original representation is preserved.
+// a canonical form. Otherwise, the original representation is preserved.
 func ValueFromBytes(typ querypb.Type, val []byte) (v Value, err error) {
 	switch {
 	case IsSigned(typ):
@@ -160,7 +204,7 @@ func ValueFromBytes(typ querypb.Type, val []byte) (v Value, err error) {
 	return v, nil
 }
 
-// BuildIntegral builds an integral type from a string representaion.
+// BuildIntegral builds an integral type from a string representation.
 // The type will be Int64 or Uint64. Int64 will be preferred where possible.
 func BuildIntegral(val string) (n Value, err error) {
 	signed, err := strconv.ParseInt(val, 0, 64)
@@ -189,6 +233,18 @@ func (v Value) Raw() []byte {
 // Len returns the length.
 func (v Value) Len() int {
 	return len(v.val)
+}
+
+// Values represents the array of Value.
+type Values []Value
+
+// Len implements the interface.
+func (vs Values) Len() int {
+	len := 0
+	for _, v := range vs {
+		len += v.Len()
+	}
+	return len
 }
 
 // String returns the raw value as a string.
@@ -306,49 +362,6 @@ func (v Value) IsText() bool {
 // IsBinary returns true if Value is binary.
 func (v Value) IsBinary() bool {
 	return IsBinary(v.typ)
-}
-
-// MarshalJSON should only be used for testing.
-// It's not a complete implementation.
-func (v Value) MarshalJSON() ([]byte, error) {
-	switch {
-	case v.IsQuoted():
-		return json.Marshal(v.String())
-	case v.typ == Null:
-		return nullstr, nil
-	}
-	return v.val, nil
-}
-
-// UnmarshalJSON should only be used for testing.
-// It's not a complete implementation.
-func (v *Value) UnmarshalJSON(b []byte) error {
-	if len(b) == 0 {
-		return fmt.Errorf("error unmarshaling empty bytes")
-	}
-	var val interface{}
-	var err error
-	switch b[0] {
-	case '-':
-		var ival int64
-		err = json.Unmarshal(b, &ival)
-		val = ival
-	case '"':
-		var bval []byte
-		err = json.Unmarshal(b, &bval)
-		val = bval
-	case 'n': // null
-		err = json.Unmarshal(b, &val)
-	default:
-		var uval uint64
-		err = json.Unmarshal(b, &uval)
-		val = uval
-	}
-	if err != nil {
-		return err
-	}
-	*v, err = BuildValue(val)
-	return err
 }
 
 func encodeBytesSQL(val []byte, b BinWriter) {

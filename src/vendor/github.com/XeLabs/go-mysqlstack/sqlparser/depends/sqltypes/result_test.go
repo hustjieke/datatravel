@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
 )
 
 func TestRepair(t *testing.T) {
@@ -141,5 +141,33 @@ func TestStripFieldNames(t *testing.T) {
 		if !reflect.DeepEqual(tcase.in, inCopy) {
 			t.Errorf("StripFieldNames modified original result")
 		}
+	}
+}
+
+func TestAppendResult(t *testing.T) {
+	r1 := &Result{
+		RowsAffected: 3,
+		Rows: [][]Value{
+			{testVal(VarBinary, "1"), testVal(VarBinary, "aa")},
+		},
+	}
+	r2 := &Result{
+		RowsAffected: 5,
+		Rows: [][]Value{
+			{testVal(VarBinary, "2"), testVal(VarBinary, "aa2")},
+		},
+	}
+	r1.AppendResult(r2)
+
+	got := r1
+	want := &Result{
+		RowsAffected: 8,
+		Rows: [][]Value{
+			{testVal(VarBinary, "1"), testVal(VarBinary, "aa")},
+			{testVal(VarBinary, "2"), testVal(VarBinary, "aa2")},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Append:\n%#v, want\n%#v", got, want)
 	}
 }

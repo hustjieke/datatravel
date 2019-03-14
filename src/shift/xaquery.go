@@ -11,12 +11,12 @@ package shift
 import (
 	"strings"
 
+	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
-	"github.com/siddontang/go-mysql/replication"
 )
 
 // XAQuery execute xa statement (xa start|end|prepare|commit|rollback)
-func (h *EventHandler) XAQuery(e *replication.QueryEvent) {
+func (h *EventHandler) XAQuery(e *canal.XAEvent) {
 	log := h.log
 	var XaType QueryType
 	var conn *client.Conn

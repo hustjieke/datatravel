@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
@@ -18,9 +18,10 @@ import (
 type driver struct {
 }
 
-// DSN user:password@addr[?db]
+// Open: DSN user:password@addr[?db]
 func (d driver) Open(dsn string) (sqldriver.Conn, error) {
-	seps := strings.Split(dsn, "@")
+	lastIndex := strings.LastIndex(dsn, "@")
+	seps := []string{dsn[:lastIndex], dsn[lastIndex+1:]}
 	if len(seps) != 2 {
 		return nil, errors.Errorf("invalid dsn, must user:password@addr[?db]")
 	}

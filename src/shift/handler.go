@@ -15,8 +15,8 @@ import (
 
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	//"github.com/siddontang/go-mysql/mysql"
+	//"github.com/siddontang/go-mysql/replication"
 )
 
 type QueryType int
@@ -70,19 +70,18 @@ func (h *EventHandler) OnRow(e *canal.RowsEvent) error {
 	return nil
 }
 
-// OnDDL used to handle the QueryEvent and XAEvent.
-func (h *EventHandler) OnDDL(nextPos mysql.Position, e *replication.QueryEvent) error {
-	log := h.log
+// OnTableChanged used to handle the QueryEvent and XAEvent.
+func (h *EventHandler) OnTableChanged(schema string, table string) error {
+	cfg := h.shift.cfg
 
-	switch e.Type {
-	case replication.QueryEvent_ALTER, replication.QueryEvent_CREATE, replication.QueryEvent_DROP, replication.QueryEvent_TRUNCATE:
-		log.Error("OnDDL.nextPos:", nextPos)
-		log.Error("ddl.sql.schema[%#v], sql[%#v]", string(e.Schema), string(e.Query))
-		// Now we don`t support ddl during dumping
-		h.shift.panicMe("can.not.do.ddl[%#v].during.dumping...", e)
-	case replication.QueryEvent_XA:
-		h.XAQuery(e)
+	if cfg.FromDatabase == schema && cfg.FromTable == table {
+		h.shift.panicMe("datatravel.cant.do.ddl[%v, %v].during.shifting...", schema, table)
 	}
+	return nil
+}
+
+func (h *EventHandler) OnXA(e *canal.XAEvent) error {
+	h.XAQuery(e)
 	return nil
 }
 
@@ -97,6 +96,7 @@ func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query) {
 	pool := h.shift.toPool
 	cfg := h.shift.cfg
 
+	log.Debug("handler.execute:%v", query)
 	switch query.typ {
 	case QueryType_INSERT, QueryType_DELETE, QueryType_UPDATE:
 		{
@@ -165,7 +165,7 @@ func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query) {
 	case QueryType_XA_COMMIT, QueryType_XA_ROLLBACK:
 		{
 			if _, err := conn.Execute(sql); err != nil {
-				shift.panicMe("shift.execute.sql[%s].error:%+v", sql, err)
+				log.Error("shift.execute.sql[%s].error:%+v", sql, err)
 			}
 			if !keep {
 				pool.Put(conn)

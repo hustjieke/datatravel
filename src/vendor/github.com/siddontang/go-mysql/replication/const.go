@@ -26,10 +26,11 @@ const (
 )
 
 const (
-	BINLOG_DUMP_NEVER_STOP  uint16 = 0x00
-	BINLOG_DUMP_NON_BLOCK   uint16 = 0x01
-	BINLOG_THROUGH_POSITION uint16 = 0x02
-	BINLOG_THROUGH_GTID     uint16 = 0x04
+	BINLOG_DUMP_NEVER_STOP          uint16 = 0x00
+	BINLOG_DUMP_NON_BLOCK           uint16 = 0x01
+	BINLOG_SEND_ANNOTATE_ROWS_EVENT uint16 = 0x02
+	BINLOG_THROUGH_POSITION         uint16 = 0x02
+	BINLOG_THROUGH_GTID             uint16 = 0x04
 )
 
 const (
@@ -126,8 +127,6 @@ func (e EventType) String() string {
 		return "FormatDescriptionEvent"
 	case XID_EVENT:
 		return "XIDEvent"
-	case XA_PREPARE_LOG_EVENT:
-		return "XAPrepareEvent"
 	case BEGIN_LOAD_QUERY_EVENT:
 		return "BeginLoadQueryEvent"
 	case EXECUTE_LOAD_QUERY_EVENT:
@@ -174,6 +173,8 @@ func (e EventType) String() string {
 		return "MariadbGTIDEvent"
 	case MARIADB_GTID_LIST_EVENT:
 		return "MariadbGTIDListEvent"
+	case XA_PREPARE_LOG_EVENT:
+		return "XAPrepareEvent"
 
 	default:
 		return "UnknownEvent"

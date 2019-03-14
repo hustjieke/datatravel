@@ -27,6 +27,7 @@ testshift:
 
 testcanal:
 	go test -v vendor/github.com/siddontang/go-mysql/canal/...
+	go test -v vendor/github.com/siddontang/go-mysql/replication/...
 
 # code coverage
 COVPKGS =	shift\

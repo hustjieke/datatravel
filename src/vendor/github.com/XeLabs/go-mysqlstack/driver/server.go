@@ -14,16 +14,23 @@ import (
 	"runtime"
 	"runtime/debug"
 
-	"github.com/XeLabs/go-mysqlstack/common"
-	"github.com/XeLabs/go-mysqlstack/sqldb"
-	"github.com/XeLabs/go-mysqlstack/xlog"
+	"github.com/xelabs/go-mysqlstack/common"
+	"github.com/xelabs/go-mysqlstack/sqldb"
+	"github.com/xelabs/go-mysqlstack/xlog"
 
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/sqltypes"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/sqltypes"
 )
 
+// Handler interface.
 type Handler interface {
 	// NewSession is called when a session is coming.
 	NewSession(session *Session)
+
+	// SessionInc is called when a new session is commit and the user is assigned, to monitor the client connection.
+	SessionInc(session *Session)
+
+	// SessionDec is called when a session is exit, to monitor the client connection.
+	SessionDec(session *Session)
 
 	// SessionClosed is called when a session exit.
 	SessionClosed(session *Session)
@@ -38,9 +45,10 @@ type Handler interface {
 	ComInitDB(session *Session, database string) error
 
 	// Handle the queries.
-	ComQuery(session *Session, query string) (*sqltypes.Result, error)
+	ComQuery(session *Session, query string, callback func(*sqltypes.Result) error) error
 }
 
+// Listener is a connection handler.
 type Listener struct {
 	// Logger.
 	log *xlog.Log
@@ -55,9 +63,6 @@ type Listener struct {
 
 	// Incrementing ID for connection id.
 	connectionID uint32
-
-	// sessions maps all sessions.
-	sessions map[uint64]*Session
 }
 
 // NewListener creates a new Listener.
@@ -70,7 +75,6 @@ func NewListener(log *xlog.Log, address string, handler Handler) (*Listener, err
 	return &Listener{
 		log:          log,
 		address:      address,
-		sessions:     make(map[uint64]*Session),
 		handler:      handler,
 		listener:     listener,
 		connectionID: 1,
@@ -150,28 +154,30 @@ func (l *Listener) handle(conn net.Conn, ID uint32) {
 		return
 	}
 
-	// Check the database.
-	db := session.auth.Database()
-	if db != "" {
-		if err = l.handler.ComInitDB(session, db); err != nil {
-			if werr := session.writeErrFromError(err); werr != nil {
-				return
-			}
-			return
-		}
-		session.SetSchema(db)
-	}
-
 	//  Auth check.
 	if err = l.handler.AuthCheck(session); err != nil {
 		log.Warning("server.user[%+v].auth.check.failed", session.User())
 		session.writeErrFromError(err)
 		return
-	} else {
-		if err = session.packets.WriteOK(0, 0, session.greeting.Status(), 0); err != nil {
+	}
+
+	// Check the database.
+	db := session.auth.Database()
+	if db != "" {
+		if err = l.handler.ComInitDB(session, db); err != nil {
+			log.Error("server.cominitdb[%s].error:%+v", db, err)
+			session.writeErrFromError(err)
 			return
 		}
+		session.SetSchema(db)
 	}
+
+	if err = session.packets.WriteOK(0, 0, session.greeting.Status(), 0); err != nil {
+		return
+	}
+
+	l.handler.SessionInc(session)
+	defer l.handler.SessionDec(session)
 
 	for {
 		// Reset packet sequence ID.
@@ -182,7 +188,6 @@ func (l *Listener) handle(conn net.Conn, ID uint32) {
 
 		switch data[0] {
 		case sqldb.COM_QUIT:
-			log.Debug("server.session[%v].com.quit", ID)
 			return
 		case sqldb.COM_INIT_DB:
 			db := l.parserComInitDB(data)
@@ -202,21 +207,19 @@ func (l *Listener) handle(conn net.Conn, ID uint32) {
 			}
 		case sqldb.COM_QUERY:
 			query := l.parserComQuery(data)
-			var result *sqltypes.Result
-			if result, err = l.handler.ComQuery(session, query); err != nil {
-				log.Error("server.handle.query.from.session[%v].error:%+v", ID, err)
+			if err = l.handler.ComQuery(session, query, func(qr *sqltypes.Result) error {
+				return session.writeResult(qr)
+			}); err != nil {
+				log.Error("server.handle.query.from.session[%v].error:%+v.query[%s]", ID, err, query)
 				if werr := session.writeErrFromError(err); werr != nil {
 					return
 				}
 				continue
 			}
-			if err = session.writeResult(result); err != nil {
-				return
-			}
 		default:
 			cmd := sqldb.CommandString(data[0])
 			log.Error("session.command:%s.not.implemented", cmd)
-			sqlErr := sqldb.NewSQLError(sqldb.ER_UNKNOWN_ERROR, "command handling not implemented yet: %s", cmd)
+			sqlErr := sqldb.NewSQLErrorf(sqldb.ER_UNKNOWN_ERROR, "command handling not implemented yet: %s", cmd)
 			if err := session.writeErrFromError(sqlErr); err != nil {
 				return
 			}
@@ -226,6 +229,7 @@ func (l *Listener) handle(conn net.Conn, ID uint32) {
 	}
 }
 
+// Addr returns the client address.
 func (l *Listener) Addr() string {
 	return l.address
 }

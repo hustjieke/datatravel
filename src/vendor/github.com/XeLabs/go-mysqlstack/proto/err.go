@@ -10,14 +10,16 @@
 package proto
 
 import (
-	"github.com/XeLabs/go-mysqlstack/common"
-	"github.com/XeLabs/go-mysqlstack/sqldb"
+	"github.com/xelabs/go-mysqlstack/common"
+	"github.com/xelabs/go-mysqlstack/sqldb"
 )
 
 const (
+	// ERR_PACKET is the error packet byte.
 	ERR_PACKET byte = 0xff
 )
 
+// ERR is the error packet.
 type ERR struct {
 	Header       byte // always 0xff
 	ErrorCode    uint16
@@ -32,29 +34,30 @@ func UnPackERR(data []byte) error {
 	e := &ERR{}
 	buf := common.ReadBuffer(data)
 	if e.Header, err = buf.ReadU8(); err != nil {
-		return sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "invalid error packet header: %v", data)
+		return sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "invalid error packet header: %v", data)
 	}
 	if e.Header != ERR_PACKET {
-		return sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "invalid error packet header: %v", e.Header)
+		return sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "invalid error packet header: %v", e.Header)
 	}
 	if e.ErrorCode, err = buf.ReadU16(); err != nil {
-		return sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "invalid error packet code: %v", data)
+		return sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "invalid error packet code: %v", data)
 	}
 
 	// Skip SQLStateMarker
 	if _, err = buf.ReadString(1); err != nil {
-		return sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "invalid error packet marker: %v", data)
+		return sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "invalid error packet marker: %v", data)
 	}
 	if e.SQLState, err = buf.ReadString(5); err != nil {
-		return sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "invalid error packet sqlstate: %v", data)
+		return sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "invalid error packet sqlstate: %v", data)
 	}
 	msgLen := len(data) - buf.Seek()
 	if e.ErrorMessage, err = buf.ReadString(msgLen); err != nil {
-		return sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "invalid error packet message: %v", data)
+		return sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "invalid error packet message: %v", data)
 	}
 	return sqldb.NewSQLError1(e.ErrorCode, e.SQLState, "%s", e.ErrorMessage)
 }
 
+// PackERR used to pack the error packet.
 func PackERR(e *ERR) []byte {
 	buf := common.NewBuffer(64)
 

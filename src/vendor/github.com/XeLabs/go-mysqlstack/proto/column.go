@@ -10,13 +10,14 @@
 package proto
 
 import (
-	"github.com/XeLabs/go-mysqlstack/common"
-	"github.com/XeLabs/go-mysqlstack/sqldb"
+	"github.com/xelabs/go-mysqlstack/common"
+	"github.com/xelabs/go-mysqlstack/sqldb"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/sqltypes"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/sqltypes"
 )
 
+// ColumnCount returns the column count.
 func ColumnCount(payload []byte) (count uint64, err error) {
 	buff := common.ReadBuffer(payload)
 	if count, err = buff.ReadLenEncode(); err != nil {
@@ -25,6 +26,7 @@ func ColumnCount(payload []byte) (count uint64, err error) {
 	return
 }
 
+// UnpackColumn used to unpack the column packet.
 // http://dev.mysql.com/doc/internals/en/com-query-response.html#packet-Protocol::ColumnDefinition41
 func UnpackColumn(payload []byte) (*querypb.Field, error) {
 	var err error
@@ -92,7 +94,7 @@ func UnpackColumn(payload []byte) (*querypb.Field, error) {
 
 	// Convert MySQL type
 	if field.Type, err = sqltypes.MySQLToType(int64(t), int64(field.Flags)); err != nil {
-		return nil, sqldb.NewSQLError(sqldb.ER_MALFORMED_PACKET, "MySQLToType(%v,%v) failed: %v", t, field.Flags, err)
+		return nil, sqldb.NewSQLErrorf(sqldb.ER_MALFORMED_PACKET, "MySQLToType(%v,%v) failed: %v", t, field.Flags, err)
 	}
 
 	// 1 Decimals
@@ -107,6 +109,7 @@ func UnpackColumn(payload []byte) (*querypb.Field, error) {
 	return field, nil
 }
 
+// PackColumn used to pack the column packet.
 func PackColumn(field *querypb.Field) []byte {
 	typ, flags := sqltypes.TypeToMySQL(field.Type)
 	if field.Flags != 0 {

@@ -149,7 +149,7 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, rea
 			if hasPK {
 				sql = fmt.Sprintf("create table `%s`.`%s`(a int primary key, b int, c varchar(200), d DOUBLE NULL DEFAULT NULL, e json DEFAULT NULL, f INT UNSIGNED DEFAULT NULL, g BIGINT DEFAULT NULL, h BIGINT UNSIGNED DEFAULT NULL, i TINYINT NULL, j TINYINT UNSIGNED DEFAULT NULL, k SMALLINT DEFAULT NULL, l SMALLINT UNSIGNED DEFAULT NULL, m MEDIUMINT DEFAULT NULL, n MEDIUMINT UNSIGNED DEFAULT NULL)", cfg.FromDatabase, cfg.FromTable)
 			} else {
-				sql = fmt.Sprintf("create table `%s`.`%s`(a int, b int, c varchar(200), d DOUBLE NULL DEFAULT NULL, e json DEFAULT NULL, f INT UNSIGNED DEFAULT NULL, g BIGINT DEFAULT NULL, h BIGINT UNSIGNED DEFAULT NULL, i TINYINT NULL, j TINYINT UNSIGNED DEFAULT NULL, k SMALLINT DEFAULT NULL, l SMALLINT UNSIGNED DEFAULT NULL, m MEDIUMINT DEFAULT NULL, n MEDIUMINT UNSIGNED DEFAULT NULL)", cfg.FromDatabase, cfg.FromTable)
+				sql = fmt.Sprintf("create table `%s`.`%s`(a int, b int, c varchar(200), d DOUBLE NULL DEFAULT NULL, e json DEFAULT NULL, f INT UNSIGNED DEFAULT NULL, g BIGINT DEFAULT NULL, h BIGINT UNSIGNED DEFAULT NULL, i TINYINT NULL, j TINYINT UNSIGNED DEFAULT NULL, k SMALLINT DEFAULT NULL, l SMALLINT UNSIGNED DEFAULT NULL, m MEDIUMINT DEFAULT NULL, n INT UNSIGNED DEFAULT NULL)", cfg.FromDatabase, cfg.FromTable)
 			}
 			if _, err := fromConn.Execute(sql); err != nil {
 				log.Panicf("mock.shift.prepare.database.error:%+v", err)

@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/sqltypes"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/sqltypes"
 )
 
 func TestNormalize(t *testing.T) {
@@ -181,6 +181,6 @@ func TestGetBindVars(t *testing.T) {
 		"v5": {},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("GetBindVars: %v, wnat %v", got, want)
+		t.Errorf("GetBindVars: %v, want %v", got, want)
 	}
 }

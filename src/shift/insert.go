@@ -12,9 +12,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/XeLabs/go-mysqlstack/common"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
+	"github.com/siddontang/go-mysql/schema"
+	"github.com/xelabs/go-mysqlstack/common"
 )
 
 func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
@@ -34,7 +35,7 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 				keep = false
 			}
 
-			for _, v := range row {
+			for idx, v := range row {
 				if v == nil {
 					values = append(values, fmt.Sprintf("NULL"))
 					continue
@@ -43,7 +44,11 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 				if _, ok := v.([]byte); ok {
 					values = append(values, fmt.Sprintf("%q", v))
 				} else {
-					values = append(values, fmt.Sprintf("%#v", v))
+					if e.Table.Columns[idx].Type == schema.TYPE_NUMBER {
+						values = append(values, fmt.Sprintf("%d", v))
+					} else {
+						values = append(values, fmt.Sprintf("%#v", v))
+					}
 				}
 			}
 
@@ -74,7 +79,9 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 		conn = h.shift.toPool.Get()
 	}
 
-	if e.DataType == canal.BINLOGDATA {
+	// if e.DataType == canal.BINLOGDATA {
+	// Binlog sync
+	if e.Header != nil {
 		executeFunc(conn)
 	} else {
 		// canal.DUMPDATA, Backend worker for mysqldump.
