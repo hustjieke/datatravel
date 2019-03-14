@@ -5,7 +5,21 @@
 package sqltypes
 
 import (
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
+)
+
+// ResultState enum.
+type ResultState int
+
+const (
+	// RStateNone enum.
+	RStateNone ResultState = iota
+	// RStateFields enum.
+	RStateFields
+	// RStateRows enum.
+	RStateRows
+	// RStateFinished enum.
+	RStateFinished
 )
 
 // Result represents a query result.
@@ -13,9 +27,11 @@ type Result struct {
 	Fields       []*querypb.Field      `json:"fields"`
 	RowsAffected uint64                `json:"rows_affected"`
 	InsertID     uint64                `json:"insert_id"`
+	Warnings     uint16                `json:"warnings"`
 	Rows         [][]Value             `json:"rows"`
 	Extras       *querypb.ResultExtras `json:"extras"`
 	sorters      []*sorter
+	State        ResultState
 }
 
 // ResultStream is an interface for receiving Result. It is used for
@@ -72,23 +88,6 @@ func (result *Result) Copy() *Result {
 		out.Rows = rows
 	}
 	return out
-}
-
-// MakeRowTrusted converts a *querypb.Row to []Value based on the types
-// in fields. It does not sanity check the values against the type.
-// Every place this function is called, a comment is needed that explains
-// why it's justified.
-func MakeRowTrusted(fields []*querypb.Field, row *querypb.Row) []Value {
-	sqlRow := make([]Value, len(row.Lengths))
-	var offset int64
-	for i, length := range row.Lengths {
-		if length < 0 {
-			continue
-		}
-		sqlRow[i] = MakeTrusted(fields[i].Type, row.Values[offset:offset+length])
-		offset += length
-	}
-	return sqlRow
 }
 
 // StripFieldNames will return a new Result that has the same Rows,

@@ -16,7 +16,8 @@ import (
 	"time"
 	"xlog"
 
-	"github.com/juju/errors"
+	//"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/mysql"
@@ -313,10 +314,11 @@ func (shift *Shift) prepareCanal() error {
 	canal.SetEventHandler(handler)
 	shift.handler = handler
 	shift.canal = canal
-	if err := canal.Start(); err != nil {
-		log.Error("shift.canal.start.error:%+v", err)
-		return err
-	}
+	go func() {
+		if err := canal.Run(); err != nil {
+			log.Error("shift.canal.run.error:%+v", err)
+		}
+	}()
 	log.Info("shift.prepare.canal.done...")
 	return nil
 }
@@ -479,6 +481,8 @@ func (shift *Shift) masterPosition() *mysql.Position {
 	return position
 }
 
+// 1. check mysqldump worker done
+// 2. check sync binlog pos
 func (shift *Shift) behindsCheckStart() error {
 	go func(s *Shift) {
 		log := s.log
@@ -488,9 +492,6 @@ func (shift *Shift) behindsCheckStart() error {
 		log.Info("shift.wait.dumper.background.worker...")
 		shift.handler.WaitWorkerDone()
 		log.Info("shift.wait.dumper.background.worker.done...")
-		log.Info("shift.set.dumper.background.worker.done...")
-		s.canal.SetDumpWorkerDone()
-		log.Info("shift.dumping.done...")
 
 		for range s.behindsTicker.C {
 			masterPos := s.masterPosition()

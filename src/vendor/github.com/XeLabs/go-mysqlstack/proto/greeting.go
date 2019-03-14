@@ -10,12 +10,14 @@
 package proto
 
 import (
-	"crypto/rand"
+	"math/rand"
+	"time"
 
-	"github.com/XeLabs/go-mysqlstack/common"
-	"github.com/XeLabs/go-mysqlstack/sqldb"
+	"github.com/xelabs/go-mysqlstack/common"
+	"github.com/xelabs/go-mysqlstack/sqldb"
 )
 
+// Greeting used for greeting packet.
 type Greeting struct {
 	protocolVersion uint8
 	Charset         uint8
@@ -36,10 +38,11 @@ type Greeting struct {
 	Salt           []byte
 }
 
+// NewGreeting creates a new Greeting.
 func NewGreeting(connectionID uint32) *Greeting {
 	greeting := &Greeting{
 		protocolVersion: 10,
-		serverVersion:   "Radon 5.7",
+		serverVersion:   "5.7-Radon-1.0",
 		ConnectionID:    connectionID,
 		Capability:      DefaultServerCapability,
 		Charset:         sqldb.CharacterSetUtf8,
@@ -47,18 +50,24 @@ func NewGreeting(connectionID uint32) *Greeting {
 		Salt:            make([]byte, 20),
 	}
 
-	// Generate the rand salts.
-	// Set to default if rand fail.
-	if _, err := rand.Read(greeting.Salt); err != nil {
-		greeting.Salt = DefaultSalt
+	// Generate the rand salts, range [1, 123].
+	for i := 0; i < len(greeting.Salt); i++ {
+		greeting.Salt[i] = byteRand(1, 123)
 	}
 	return greeting
 }
 
+func byteRand(min int, max int) byte {
+	rand.Seed(time.Now().UTC().UnixNano())
+	return byte(min + rand.Intn(max-min))
+}
+
+// Status returns status of greeting.
 func (g *Greeting) Status() uint16 {
 	return g.status
 }
 
+// Pack used to pack the greeting packet.
 // https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeV10
 func (g *Greeting) Pack() []byte {
 	// greeting buffer
@@ -112,6 +121,7 @@ func (g *Greeting) Pack() []byte {
 	return buf.Datas()
 }
 
+// UnPack used to unpack the greeting packet.
 func (g *Greeting) UnPack(payload []byte) error {
 	var err error
 	buf := common.ReadBuffer(payload)

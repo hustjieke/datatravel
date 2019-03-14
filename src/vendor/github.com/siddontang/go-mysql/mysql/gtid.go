@@ -1,6 +1,6 @@
 package mysql
 
-import "github.com/juju/errors"
+import "github.com/pingcap/errors"
 
 type GTIDSet interface {
 	String() string
@@ -11,6 +11,10 @@ type GTIDSet interface {
 	Equal(o GTIDSet) bool
 
 	Contain(o GTIDSet) bool
+
+	Update(GTIDStr string) error
+
+	Clone() GTIDSet
 }
 
 func ParseGTIDSet(flavor string, s string) (GTIDSet, error) {

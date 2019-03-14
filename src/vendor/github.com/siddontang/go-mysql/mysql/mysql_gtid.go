@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/satori/go.uuid"
 	"github.com/siddontang/go/hack"
 )
@@ -97,14 +97,18 @@ func (s IntervalSlice) Normalize() IntervalSlice {
 			n = append(n, s[i])
 			continue
 		} else {
-			n[len(n)-1] = Interval{last.Start, s[i].Stop}
+			stop := s[i].Stop
+			if last.Stop > stop {
+				stop = last.Stop
+			}
+			n[len(n)-1] = Interval{last.Start, stop}
 		}
 	}
 
 	return n
 }
 
-// Return true if sub in s
+// Contain returns true if sub in s
 func (s IntervalSlice) Contain(sub IntervalSlice) bool {
 	j := 0
 	for i := 0; i < len(sub); i++ {
@@ -285,6 +289,15 @@ func (s *UUIDSet) Decode(data []byte) error {
 	return err
 }
 
+func (s *UUIDSet) Clone() *UUIDSet {
+	clone := new(UUIDSet)
+
+	clone.SID, _ = uuid.FromString(s.SID.String())
+	clone.Intervals = s.Intervals.Normalize()
+
+	return clone
+}
+
 type MysqlGTIDSet struct {
 	Sets map[string]*UUIDSet
 }
@@ -348,6 +361,17 @@ func (s *MysqlGTIDSet) AddSet(set *UUIDSet) {
 	}
 }
 
+func (s *MysqlGTIDSet) Update(GTIDStr string) error {
+	uuidSet, err := ParseUUIDSet(GTIDStr)
+	if err != nil {
+		return err
+	}
+
+	s.AddSet(uuidSet)
+
+	return nil
+}
+
 func (s *MysqlGTIDSet) Contain(o GTIDSet) bool {
 	sub, ok := o.(*MysqlGTIDSet)
 	if !ok {
@@ -406,9 +430,20 @@ func (s *MysqlGTIDSet) Encode() []byte {
 
 	binary.Write(&buf, binary.LittleEndian, uint64(len(s.Sets)))
 
-	for i, _ := range s.Sets {
+	for i := range s.Sets {
 		s.Sets[i].encode(&buf)
 	}
 
 	return buf.Bytes()
+}
+
+func (gtid *MysqlGTIDSet) Clone() GTIDSet {
+	clone := &MysqlGTIDSet{
+		Sets: make(map[string]*UUIDSet),
+	}
+	for sid, uuidSet := range gtid.Sets {
+		clone.Sets[sid] = uuidSet.Clone()
+	}
+
+	return clone
 }

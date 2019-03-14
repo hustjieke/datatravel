@@ -12,17 +12,17 @@ package driver
 import (
 	"testing"
 
-	"github.com/XeLabs/go-mysqlstack/sqldb"
-	"github.com/XeLabs/go-mysqlstack/xlog"
 	"github.com/stretchr/testify/assert"
+	"github.com/xelabs/go-mysqlstack/sqldb"
+	"github.com/xelabs/go-mysqlstack/xlog"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/sqltypes"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/sqltypes"
 )
 
 func TestServer(t *testing.T) {
 	result1 := &sqltypes.Result{
-		RowsAffected: 2,
+		RowsAffected: 3,
 		Fields: []*querypb.Field{
 			{
 				Name: "id",
@@ -32,14 +32,25 @@ func TestServer(t *testing.T) {
 				Name: "name",
 				Type: querypb.Type_VARCHAR,
 			},
+			{
+				Name: "extra",
+				Type: querypb.Type_NULL_TYPE,
+			},
 		},
 		Rows: [][]sqltypes.Value{
 			{
 				sqltypes.MakeTrusted(querypb.Type_INT32, []byte("10")),
 				sqltypes.MakeTrusted(querypb.Type_VARCHAR, []byte("nice name")),
+				sqltypes.NULL,
 			},
 			{
 				sqltypes.MakeTrusted(querypb.Type_INT32, []byte("20")),
+				sqltypes.NULL,
+				sqltypes.NULL,
+			},
+			{
+				sqltypes.MakeTrusted(querypb.Type_INT32, []byte("30")),
+				sqltypes.MakeTrusted(querypb.Type_VARCHAR, []byte("")),
 				sqltypes.NULL,
 			},
 		},
@@ -95,7 +106,9 @@ func TestServer(t *testing.T) {
 		th.AddQuery("SELECT1", result1)
 		r, err := client.FetchAll("SELECT1", -1)
 		assert.Nil(t, err)
-		assert.Equal(t, result1, r)
+		want := result1.Copy()
+		got := r
+		assert.Equal(t, want.Rows, got.Rows)
 	}
 
 	// fetch one
@@ -195,7 +208,7 @@ func TestServerSessionClose(t *testing.T) {
 }
 
 func TestServerComInitDB(t *testing.T) {
-	log := xlog.NewStdLog(xlog.Level(xlog.ERROR))
+	log := xlog.NewStdLog(xlog.Level(xlog.INFO))
 	th := NewTestHandler(log)
 	svr, err := MockMysqlServer(log, th)
 	assert.Nil(t, err)
@@ -204,8 +217,7 @@ func TestServerComInitDB(t *testing.T) {
 
 	// query
 	{
-		client, err := NewConn("mock", "mock", address, "xxtest", "")
-		defer client.Close()
+		_, err := NewConn("mock", "mock", address, "xxtest", "")
 		want := "mock.cominit.db.error: unkonw database[xxtest] (errno 1105) (sqlstate HY000)"
 		got := err.Error()
 		assert.Equal(t, want, got)

@@ -2,7 +2,6 @@ package replication
 
 import (
 	"encoding/binary"
-	//"encoding/hex"
 	"fmt"
 	"io"
 	"strconv"
@@ -10,17 +9,21 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/satori/go.uuid"
 	. "github.com/siddontang/go-mysql/mysql"
 )
 
 const (
-	EventHeaderSize = 19
+	EventHeaderSize            = 19
+	SidLength                  = 16
+	LogicalTimestampTypeCode   = 2
+	PartLogicalTimestampLength = 8
+	BinlogChecksumLength       = 4
 )
 
 type BinlogEvent struct {
-	// raw binlog data, including crc32 checksum if exists
+	// raw binlog data which contains all data, including binlog header and event body, and including crc32 checksum if exists
 	RawData []byte
 
 	Header *EventHeader
@@ -50,7 +53,7 @@ type EventError struct {
 }
 
 func (e *EventError) Error() string {
-	return e.Err
+	return fmt.Sprintf("Header %#v, Data %q, Err: %v", e.Header, e.Data, e.Err)
 }
 
 type EventHeader struct {
@@ -216,6 +219,9 @@ func (e *RotateEvent) Dump(w io.Writer) {
 
 type XIDEvent struct {
 	XID uint64
+
+	// in fact XIDEvent dosen't have the GTIDSet information, just for beneficial to use
+	GSet GTIDSet
 }
 
 func (e *XIDEvent) Decode(data []byte) error {
@@ -225,98 +231,10 @@ func (e *XIDEvent) Decode(data []byte) error {
 
 func (e *XIDEvent) Dump(w io.Writer) {
 	fmt.Fprintf(w, "XID: %d\n", e.XID)
-	fmt.Fprintln(w)
-}
-
-type XAPrepareEvent struct {
-	formatID     int32
-	gtrid_length int32
-	bqual_length int32
-	data         []byte
-	Query        []byte
-}
-
-// GetXAQuery return 'xa prepare' statement
-// see MySQL sql/xa_aux.h, function - serialize_xid()
-func (e *XAPrepareEvent) getXAQuery() []byte {
-
-	xa := "XA PREPARE"
-
-	pos := 0
-
-	xa = fmt.Sprintf("%s X'%x'", xa, e.data[pos:e.gtrid_length])
-
-	pos += int(e.gtrid_length)
-
-	xa = fmt.Sprintf("%s,X'%x'", xa, e.data[pos:e.gtrid_length+e.bqual_length])
-	xa = fmt.Sprintf("%s,%v", xa, e.formatID)
-
-	return []byte(xa)
-}
-
-func (e *XAPrepareEvent) Decode(data []byte) error {
-	pos := 0
-
-	//skip one_phace
-	pos += 1
-
-	e.formatID = int32(binary.LittleEndian.Uint32(data[pos:]))
-	pos += 4
-
-	e.gtrid_length = int32(binary.LittleEndian.Uint32(data[pos:]))
-	pos += 4
-
-	e.bqual_length = int32(binary.LittleEndian.Uint32(data[pos:]))
-	pos += 4
-
-	e.data = data[pos:]
-
-	e.Query = e.getXAQuery()
-
-	return nil
-}
-
-func (e *XAPrepareEvent) Dump(w io.Writer) {
-	fmt.Fprintf(w, "formatID: %d\n", e.formatID)
-	fmt.Fprintf(w, "gtrid_length: %d\n", e.gtrid_length)
-	fmt.Fprintf(w, "bqual_length: %d\n", e.bqual_length)
-	fmt.Fprintf(w, "Query: %s\n", e.Query)
-	fmt.Fprintln(w)
-}
-
-type QueryEventType uint32
-
-const (
-	QueryEvent_UNKNOW   QueryEventType = 0
-	QueryEvent_BEGIN    QueryEventType = 1
-	QueryEvent_COMMIT   QueryEventType = 2
-	QueryEvent_ROLLBACK QueryEventType = 3
-	QueryEvent_CREATE   QueryEventType = 4
-	QueryEvent_ALTER    QueryEventType = 5
-	QueryEvent_DROP     QueryEventType = 6
-	QueryEvent_TRUNCATE QueryEventType = 7
-	QueryEvent_XA       QueryEventType = 8
-)
-
-var (
-	queryEventPrefixes = map[string]QueryEventType{
-		"begin":    QueryEvent_BEGIN,
-		"commit":   QueryEvent_COMMIT,
-		"rollback": QueryEvent_ROLLBACK,
-		"create":   QueryEvent_CREATE,
-		"alter":    QueryEvent_ALTER,
-		"drop":     QueryEvent_DROP,
-		"truncate": QueryEvent_TRUNCATE,
-		"xa":       QueryEvent_XA,
+	if e.GSet != nil {
+		fmt.Fprintf(w, "GTIDSet: %s\n", e.GSet.String())
 	}
-)
-
-// getQueryEventType returns the query event type for a SQL statement.
-func getQueryEventType(sql string) QueryEventType {
-	if i := strings.IndexByte(sql, byte(' ')); i >= 0 {
-		sql = sql[:i]
-	}
-	return queryEventPrefixes[strings.ToLower(sql)]
+	fmt.Fprintln(w)
 }
 
 type QueryEvent struct {
@@ -326,7 +244,9 @@ type QueryEvent struct {
 	StatusVars    []byte
 	Schema        []byte
 	Query         []byte
-	Type          QueryEventType
+
+	// in fact QueryEvent dosen't have the GTIDSet information, just for beneficial to use
+	GSet GTIDSet
 }
 
 func (e *QueryEvent) Decode(data []byte) error {
@@ -357,7 +277,6 @@ func (e *QueryEvent) Decode(data []byte) error {
 	pos++
 
 	e.Query = data[pos:]
-	e.Type = getQueryEventType(string(e.Query))
 	return nil
 }
 
@@ -368,22 +287,36 @@ func (e *QueryEvent) Dump(w io.Writer) {
 	//fmt.Fprintf(w, "Status vars: \n%s", hex.Dump(e.StatusVars))
 	fmt.Fprintf(w, "Schema: %s\n", e.Schema)
 	fmt.Fprintf(w, "Query: %s\n", e.Query)
-	fmt.Fprintf(w, "Type: %v\n", e.Type)
+	if e.GSet != nil {
+		fmt.Fprintf(w, "GTIDSet: %s\n", e.GSet.String())
+	}
 	fmt.Fprintln(w)
 }
 
 type GTIDEvent struct {
-	CommitFlag uint8
-	SID        []byte
-	GNO        int64
+	CommitFlag     uint8
+	SID            []byte
+	GNO            int64
+	LastCommitted  int64
+	SequenceNumber int64
 }
 
 func (e *GTIDEvent) Decode(data []byte) error {
-	e.CommitFlag = uint8(data[0])
-
-	e.SID = data[1:17]
-
-	e.GNO = int64(binary.LittleEndian.Uint64(data[17:]))
+	pos := 0
+	e.CommitFlag = uint8(data[pos])
+	pos++
+	e.SID = data[pos : pos+SidLength]
+	pos += SidLength
+	e.GNO = int64(binary.LittleEndian.Uint64(data[pos:]))
+	pos += 8
+	if len(data) >= 42 {
+		if uint8(data[pos]) == LogicalTimestampTypeCode {
+			pos++
+			e.LastCommitted = int64(binary.LittleEndian.Uint64(data[pos:]))
+			pos += PartLogicalTimestampLength
+			e.SequenceNumber = int64(binary.LittleEndian.Uint64(data[pos:]))
+		}
+	}
 	return nil
 }
 
@@ -391,6 +324,8 @@ func (e *GTIDEvent) Dump(w io.Writer) {
 	fmt.Fprintf(w, "Commit flag: %d\n", e.CommitFlag)
 	u, _ := uuid.FromBytes(e.SID)
 	fmt.Fprintf(w, "GTID_NEXT: %s:%d\n", u.String(), e.GNO)
+	fmt.Fprintf(w, "LAST_COMMITTED: %d\n", e.LastCommitted)
+	fmt.Fprintf(w, "SEQUENCE_NUMBER: %d\n", e.SequenceNumber)
 	fmt.Fprintln(w)
 }
 
@@ -476,16 +411,16 @@ func (e *ExecuteLoadQueryEvent) Dump(w io.Writer) {
 // case MARIADB_ANNOTATE_ROWS_EVENT:
 // 	return "MariadbAnnotateRowsEvent"
 
-type MariadbAnnotaeRowsEvent struct {
+type MariadbAnnotateRowsEvent struct {
 	Query []byte
 }
 
-func (e *MariadbAnnotaeRowsEvent) Decode(data []byte) error {
+func (e *MariadbAnnotateRowsEvent) Decode(data []byte) error {
 	e.Query = data
 	return nil
 }
 
-func (e *MariadbAnnotaeRowsEvent) Dump(w io.Writer) {
+func (e *MariadbAnnotateRowsEvent) Dump(w io.Writer) {
 	fmt.Fprintf(w, "Query: %s\n", e.Query)
 	fmt.Fprintln(w)
 }
@@ -518,7 +453,7 @@ func (e *MariadbGTIDEvent) Decode(data []byte) error {
 }
 
 func (e *MariadbGTIDEvent) Dump(w io.Writer) {
-	fmt.Fprintf(w, "GTID: %s\n", e.GTID)
+	fmt.Fprintf(w, "GTID: %v\n", e.GTID)
 	fmt.Fprintln(w)
 }
 
@@ -541,6 +476,7 @@ func (e *MariadbGTIDListEvent) Decode(data []byte) error {
 		e.GTIDs[i].ServerID = binary.LittleEndian.Uint32(data[pos:])
 		pos += 4
 		e.GTIDs[i].SequenceNumber = binary.LittleEndian.Uint64(data[pos:])
+		pos += 8
 	}
 
 	return nil

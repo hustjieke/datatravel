@@ -1,3 +1,0 @@
-[submodule "src/vendor/github.com/pingcap/check"]
-	path = src/vendor/github.com/pingcap/check
-	url = https://github.com/pingcap/check

@@ -20,5 +20,5 @@ var sysDatabases = map[string]bool{
 }
 
 func logPanicHandler(log *xlog.Log, format string, v ...interface{}) {
-	log.Fatal(format, v)
+	log.Fatal(format, v...)
 }

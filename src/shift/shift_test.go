@@ -368,7 +368,7 @@ func TestShiftIntegerUnsigned(t *testing.T) {
 	_, err := fromConn.Execute(sql)
 	assert.Nil(t, err)
 
-	sql = fmt.Sprintf("insert into `%s`.`%s`(a,f,g,h,i,j,k,l,m,n) values(2147483647,4294967295,9223372036854775807,18446744073709551615,127,255,32767,65535,8388607,16777215)", shift.cfg.FromDatabase, shift.cfg.FromTable)
+	sql = fmt.Sprintf("insert into `%s`.`%s`(a,f,g,h,i,j,k,l,m,n) values(2147483647,4294967295,9223372036854775807,18446744073709551615,127,255,32767,65535,8388607,16777214)", shift.cfg.FromDatabase, shift.cfg.FromTable)
 	_, err = fromConn.Execute(sql)
 	assert.Nil(t, err)
 

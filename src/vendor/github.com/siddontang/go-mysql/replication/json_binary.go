@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	. "github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
 )
@@ -70,8 +70,16 @@ func jsonbGetValueEntrySize(isSmall bool) int {
 
 // decodeJsonBinary decodes the JSON binary encoding data and returns
 // the common JSON encoding data.
-func decodeJsonBinary(data []byte) ([]byte, error) {
-	d := new(jsonBinaryDecoder)
+func (e *RowsEvent) decodeJsonBinary(data []byte) ([]byte, error) {
+	// Sometimes, we can insert a NULL JSON even we set the JSON field as NOT NULL.
+	// If we meet this case, we can return an empty slice.
+	if len(data) == 0 {
+		return []byte{}, nil
+	}
+	d := jsonBinaryDecoder{
+		useDecimal:      e.useDecimal,
+		ignoreDecodeErr: e.ignoreJSONDecodeErr,
+	}
 
 	if d.isDataShort(data, 1) {
 		return nil, d.err
@@ -86,7 +94,9 @@ func decodeJsonBinary(data []byte) ([]byte, error) {
 }
 
 type jsonBinaryDecoder struct {
-	err error
+	useDecimal      bool
+	ignoreDecodeErr bool
+	err             error
 }
 
 func (d *jsonBinaryDecoder) decodeValue(tp byte, data []byte) interface{} {
@@ -140,6 +150,13 @@ func (d *jsonBinaryDecoder) decodeObjectOrArray(data []byte, isSmall bool, isObj
 	size := d.decodeCount(data[offsetSize:], isSmall)
 
 	if d.isDataShort(data, int(size)) {
+		// Before MySQL 5.7.22, json type generated column may have invalid value,
+		// bug ref: https://bugs.mysql.com/bug.php?id=88791
+		// As generated column value is not used in replication, we can just ignore
+		// this error and return a dummy value for this column.
+		if d.ignoreDecodeErr {
+			d.err = nil
+		}
 		return nil
 	}
 
@@ -382,7 +399,7 @@ func (d *jsonBinaryDecoder) decodeDecimal(data []byte) interface{} {
 	precision := int(data[0])
 	scale := int(data[1])
 
-	v, _, err := decodeDecimal(data[2:], precision, scale)
+	v, _, err := decodeDecimal(data[2:], precision, scale, d.useDecimal)
 	d.err = err
 
 	return v
@@ -463,7 +480,7 @@ func (d *jsonBinaryDecoder) decodeVariableLength(data []byte) (int, int) {
 
 		if v&0x80 == 0 {
 			if length > math.MaxUint32 {
-				d.err = errors.Errorf("variable length %d must <= %d", length, math.MaxUint32)
+				d.err = errors.Errorf("variable length %d must <= %d", length, int64(math.MaxUint32))
 				return 0, 0
 			}
 

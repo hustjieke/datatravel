@@ -1,14 +1,14 @@
 package replication
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 	"testing"
 	"time"
-
-	"context"
 
 	. "github.com/pingcap/check"
 	uuid "github.com/satori/go.uuid"
@@ -285,15 +285,16 @@ func (t *testSyncerSuite) setupTest(c *C, flavor string) {
 	}
 
 	cfg := BinlogSyncerConfig{
-		ServerID: 100,
-		Flavor:   flavor,
-		Host:     *testHost,
-		Port:     port,
-		User:     "root",
-		Password: "",
+		ServerID:   100,
+		Flavor:     flavor,
+		Host:       *testHost,
+		Port:       port,
+		User:       "root",
+		Password:   "",
+		UseDecimal: true,
 	}
 
-	t.b = NewBinlogSyncer(&cfg)
+	t.b = NewBinlogSyncer(cfg)
 }
 
 func (t *testSyncerSuite) testPositionSync(c *C) {
@@ -303,7 +304,7 @@ func (t *testSyncerSuite) testPositionSync(c *C) {
 	binFile, _ := r.GetString(0, 0)
 	binPos, _ := r.GetInt(0, 1)
 
-	s, err := t.b.StartSync(mysql.Position{binFile, uint32(binPos)})
+	s, err := t.b.StartSync(mysql.Position{Name: binFile, Pos: uint32(binPos)})
 	c.Assert(err, IsNil)
 
 	// Test re-sync.
@@ -368,6 +369,12 @@ func (t *testSyncerSuite) TestMariadbGTIDSync(c *C) {
 	t.testSync(c, s)
 }
 
+func (t *testSyncerSuite) TestMariadbAnnotateRows(c *C) {
+	t.setupTest(c, mysql.MariaDBFlavor)
+	t.b.cfg.DumpCommandFlag = BINLOG_SEND_ANNOTATE_ROWS_EVENT
+	t.testPositionSync(c)
+}
+
 func (t *testSyncerSuite) TestMysqlSemiPositionSync(c *C) {
 	t.setupTest(c, mysql.MySQLFlavor)
 
@@ -395,12 +402,15 @@ func (t *testSyncerSuite) TestMysqlBinlogCodec(c *C) {
 		t.testSync(c, nil)
 	}()
 
-	os.RemoveAll("./var")
+	binlogDir := "./var"
 
-	err := t.b.StartBackup("./var", mysql.Position{"", uint32(0)}, 2*time.Second)
+	os.RemoveAll(binlogDir)
+
+	err := t.b.StartBackup(binlogDir, mysql.Position{Name: "", Pos: uint32(0)}, 2*time.Second)
 	c.Assert(err, IsNil)
 
 	p := NewBinlogParser()
+	p.SetVerifyChecksum(true)
 
 	f := func(e *BinlogEvent) error {
 		if *testOutputLogs {
@@ -410,9 +420,15 @@ func (t *testSyncerSuite) TestMysqlBinlogCodec(c *C) {
 		return nil
 	}
 
-	err = p.ParseFile("./var/mysql.000001", 0, f)
+	dir, err := os.Open(binlogDir)
+	c.Assert(err, IsNil)
+	defer dir.Close()
+
+	files, err := dir.Readdirnames(-1)
 	c.Assert(err, IsNil)
 
-	err = p.ParseFile("./var/mysql.000002", 0, f)
-	c.Assert(err, IsNil)
+	for _, file := range files {
+		err = p.ParseFile(path.Join(binlogDir, file), 0, f)
+		c.Assert(err, IsNil)
+	}
 }

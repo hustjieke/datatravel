@@ -24,7 +24,24 @@ type SQLError struct {
 	Query   string
 }
 
-func NewSQLError(number uint16, format string, args ...interface{}) *SQLError {
+// NewSQLError creates new sql error.
+func NewSQLError(number uint16, args ...interface{}) *SQLError {
+	sqlErr := &SQLError{}
+	err, ok := SQLErrors[number]
+	if !ok {
+		unknow := SQLErrors[ER_UNKNOWN_ERROR]
+		sqlErr.Num = unknow.Num
+		sqlErr.State = unknow.State
+		err = unknow
+	} else {
+		sqlErr.Num = err.Num
+		sqlErr.State = err.State
+	}
+	sqlErr.Message = fmt.Sprintf(err.Message, args...)
+	return sqlErr
+}
+
+func NewSQLErrorf(number uint16, format string, args ...interface{}) *SQLError {
 	sqlErr := &SQLError{}
 	err, ok := SQLErrors[number]
 	if !ok {
@@ -35,15 +52,11 @@ func NewSQLError(number uint16, format string, args ...interface{}) *SQLError {
 		sqlErr.Num = err.Num
 		sqlErr.State = err.State
 	}
-
-	if format != "" {
-		sqlErr.Message = fmt.Sprintf(format, args...)
-	} else {
-		sqlErr.Message = fmt.Sprintf(err.Message, args...)
-	}
+	sqlErr.Message = fmt.Sprintf(format, args...)
 	return sqlErr
 }
 
+// NewSQLError1 creates new sql error with state.
 func NewSQLError1(number uint16, state string, format string, args ...interface{}) *SQLError {
 	return &SQLError{
 		Num:     number,

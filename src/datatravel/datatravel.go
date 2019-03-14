@@ -43,11 +43,13 @@ var (
 	threads   = flag.Int("threads", 16, "shift threads num(defaults 16)")
 	behinds   = flag.Int("behinds", 2048, "seconds behinds num(default 2048)")
 	radonURL  = flag.String("radonurl", "http://127.0.0.1:8080", "Radon RESTful api(defaults http://127.0.0.1:8080)")
+
+	debug = flag.Bool("debug", false, "Set log to debug mode(defaults false)")
 )
 
 func check(log *xlog.Log) {
 	if *toFlavor == "" || *from == "" || *fromUser == "" || *to == "" || *toUser == "" {
-		log.Panic("usage: datatravel --to-flavor=[radondb/mariadb/mysql] --from=[host:port] --from-password=[password] -- to=[host:port] --to-user=[user] --to-password=[password] --cleanup=[false|true]")
+		log.Panic("usage: datatravel --to-flavor=[radondb/mariadb/mysql] --from=[host:port] --from-password=[password] --to=[host:port] --to-user=[user] --to-password=[password] --cleanup=[false|true]")
 	}
 }
 
@@ -60,6 +62,11 @@ func main() {
 
 	// flags.
 	flag.Parse()
+
+	// log.
+	if *debug {
+		log = xlog.NewStdLog(xlog.Level(xlog.DEBUG))
+	}
 	check(log)
 	fmt.Println(`
            IMPORTANT: Please check that the shift run completes successfully.

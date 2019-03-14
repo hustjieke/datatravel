@@ -14,9 +14,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	querypb "github.com/XeLabs/go-mysqlstack/sqlparser/depends/query"
-	"github.com/XeLabs/go-mysqlstack/sqlparser/depends/sqltypes"
-	"github.com/XeLabs/go-mysqlstack/xlog"
+	querypb "github.com/xelabs/go-mysqlstack/sqlparser/depends/query"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/sqltypes"
+	"github.com/xelabs/go-mysqlstack/xlog"
 )
 
 func TestRows(t *testing.T) {
@@ -79,7 +79,7 @@ func TestRows(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, result1.Fields, rows.Fields())
 		for rows.Next() {
-			//_ = rows.Datas()
+			_ = rows.Datas()
 			_, _ = rows.RowValues()
 		}
 
