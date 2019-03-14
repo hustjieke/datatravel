@@ -155,15 +155,12 @@ func (c *Conn) readResultColumns(result *Result) (err error) {
 
 		// EOF Packet
 		if c.isEOFPacket(data) {
-			// Modify for RadonDB: slice bounds out of range
-			/*
-				if c.capability&CLIENT_PROTOCOL_41 > 0 {
-					//result.Warnings = binary.LittleEndian.Uint16(data[1:])
-					//todo add strict_mode, warning will be treat as error
-					result.Status = binary.LittleEndian.Uint16(data[3:])
-					c.status = result.Status
-				}
-			*/
+			if c.capability&CLIENT_PROTOCOL_41 > 0 {
+				//result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				//todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				c.status = result.Status
+			}
 
 			if i != len(result.Fields) {
 				err = ErrMalformPacket
@@ -195,15 +192,12 @@ func (c *Conn) readResultRows(result *Result, isBinary bool) (err error) {
 
 		// EOF Packet
 		if c.isEOFPacket(data) {
-			// Modify for RadonDB: slice bounds out of range
-			/*
-				if c.capability&CLIENT_PROTOCOL_41 > 0 {
-					//result.Warnings = binary.LittleEndian.Uint16(data[1:])
-					//todo add strict_mode, warning will be treat as error
-					result.Status = binary.LittleEndian.Uint16(data[3:])
-					c.status = result.Status
-				}
-			*/
+			if c.capability&CLIENT_PROTOCOL_41 > 0 {
+				//result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				//todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				c.status = result.Status
+			}
 
 			break
 		}
