@@ -40,4 +40,8 @@ type Config struct {
 
 	Databases    []string
 	DBTablesMaps map[string][]string // key:db, value: tables
+
+	// FromRows and ToRows are used to count dump progress
+	FromRows uint64
+	ToRows   uint64
 }
