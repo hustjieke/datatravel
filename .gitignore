@@ -4,4 +4,3 @@ testdir
 coverage*
 *.outs
 tags
-src/github.com
