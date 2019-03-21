@@ -16,7 +16,6 @@ import (
 	"time"
 	"xlog"
 
-	//"github.com/juju/errors"
 	"github.com/pingcap/errors"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
@@ -132,7 +131,7 @@ func (shift *Shift) prepareTable() error {
 			return err
 		}
 
-		sql = fmt.Sprintf("show tables")
+		sql = fmt.Sprintf("show table status")
 		r, err = fromConn.Execute(sql)
 		if err != nil {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
@@ -140,9 +139,13 @@ func (shift *Shift) prepareTable() error {
 		}
 
 		var tables []string
+		tblName := "Name"
+		tblRows := "Rows"
 		for i := 0; i < r.RowNumber(); i++ {
-			str, _ := r.GetString(i, 0)
-			tables = append(tables, str)
+			tbl, _ := r.GetStringByName(i, tblName)
+			tables = append(tables, tbl)
+			rows, _ := r.GetUintByName(i, tblRows)
+			cfg.FromRows += rows
 		}
 		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
@@ -227,7 +230,7 @@ func (shift *Shift) checkTableExistForRadonDB() error {
 			return err
 		}
 
-		sql = fmt.Sprintf("show tables")
+		sql = fmt.Sprintf("show table status")
 		r, err = fromConn.Execute(sql)
 		if err != nil {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
@@ -235,9 +238,13 @@ func (shift *Shift) checkTableExistForRadonDB() error {
 		}
 
 		var tables []string
+		tblName := "Name"
+		tblRows := "Rows"
 		for i := 0; i < r.RowNumber(); i++ {
-			str, _ := r.GetString(i, 0)
-			tables = append(tables, str)
+			tbl, _ := r.GetStringByName(i, tblName)
+			tables = append(tables, tbl)
+			rows, _ := r.GetUintByName(i, tblRows)
+			cfg.FromRows += rows
 		}
 		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
@@ -445,6 +452,98 @@ func (shift *Shift) checksumTablesForRadonDB(db string, tbls []string) error {
 }
 
 /*
+ mysql> show table status;
++-----------+--------+---------+------------+--------+----------------+
+| Name      | Engine | Version | Row_format | Rows   | Avg_row_length |
++-----------+--------+---------+------------+--------+----------------+
+| benchyou0 | InnoDB |      10 | Dynamic    |  95883 |            400 |
+| benchyou1 | InnoDB |      10 | Dynamic    |  98833 |            388 |
+| benchyou2 | InnoDB |      10 | Dynamic    |  91012 |            421 |
+| benchyou3 | InnoDB |      10 | Dynamic    |  95399 |            402 |
+| benchyou4 | InnoDB |      10 | Dynamic    |  90460 |            423 |
+| benchyou5 | InnoDB |      10 | Dynamic    |  99157 |            386 |
+| benchyou6 | InnoDB |      10 | Dynamic    |  92319 |            415 |
+| benchyou7 | InnoDB |      10 | Dynamic    | 101641 |            377 |
+| benchyou8 | InnoDB |      10 | Dynamic    |  96736 |            363 |
+| benchyou9 | InnoDB |      10 | Dynamic    |  94729 |            415 |
++-----------+--------+---------+------------+--------+----------------+
+*/
+/* count dump progress */
+const (
+	secondsPerMinute = 60
+	secondsPerHour   = secondsPerMinute * 60
+)
+
+func (shift *Shift) dumpProgress() error {
+	go func(s *Shift) {
+		cfg := s.cfg
+		log := s.log
+
+		sql := "show table status"
+		toConn := s.toPool.Get()
+		defer s.toPool.Put(toConn)
+		var dumpTime uint64
+		time.Sleep(10 * time.Second)
+		log.Info("cfg.FromRows when dump:", cfg.FromRows)
+		for {
+			dumpTime += 10
+
+			// Get rows from toConn
+			cfg.ToRows = 0
+			for j := 0; j < len(cfg.Databases); j++ {
+				// Get tables
+				sql = fmt.Sprintf("use `%s`", cfg.Databases[j])
+				r, err := toConn.Execute(sql)
+				if err != nil {
+					log.Error("shift.use.database.sql[%s].error:%+v", sql, err)
+					return
+				}
+
+				sql = fmt.Sprintf("show table status")
+				r, err = toConn.Execute(sql)
+				if err != nil {
+					log.Error("shift.show.table.status[%s].error:%+v", sql, err)
+				}
+				if r.RowNumber() == 0 {
+					log.Info("shift.check.database.[%+v].no.tables", cfg.Databases[j])
+					continue // don`t need return err
+				}
+
+				tblRows := "Rows"
+				for i := 0; i < r.RowNumber(); i++ {
+					rows, _ := r.GetUintByName(i, tblRows)
+					cfg.ToRows += rows
+				}
+			}
+
+			avgRate := cfg.ToRows / dumpTime
+			// Unit: second
+			remainTime := (cfg.FromRows - cfg.ToRows) / avgRate
+			seconds := remainTime % secondsPerMinute
+			hours := (remainTime - seconds) / secondsPerHour
+			minutes := (remainTime - seconds - hours*secondsPerHour) / secondsPerMinute
+			log.Info("shift.remain.hour[%+v], minutes[%+v]", hours, minutes)
+
+			// s.cfg.RemainTime = (fromSize - toSize) / avgRate
+
+			per := uint((float64(cfg.ToRows) / float64(cfg.FromRows)) * 100)
+			if per > 90 {
+				log.Info("wait.dump.shift.dump.done.during.progress[%+v]", per)
+				<-s.canal.WaitDumpDone()
+				per = 100
+				log.Info("shift.dump.progress[%+v]", per)
+				break
+			}
+			log.Info("shift.dump.progress[%+v]", per)
+
+			time.Sleep(30 * time.Second)
+		}
+	}(shift)
+
+	return nil
+}
+
+/*
    mysql> show master status;
    +------------------+-----------+--------------+------------------+------------------------------------------------+
    | File             | Position  | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set                              |
@@ -489,7 +588,7 @@ func (shift *Shift) behindsCheckStart() error {
 		log.Info("shift.dumping...")
 		<-s.canal.WaitDumpDone()
 		// Wait dump worker done.
-		log.Info("shift.wait.dumper.background.worker...")
+		log.Info("shift.wait.dumper.background.worker.again...")
 		shift.handler.WaitWorkerDone()
 		log.Info("shift.wait.dumper.background.worker.done...")
 
@@ -522,6 +621,9 @@ func (shift *Shift) Start() error {
 		}
 	}
 	if err := shift.prepareCanal(); err != nil {
+		return err
+	}
+	if err := shift.dumpProgress(); err != nil {
 		return err
 	}
 	if err := shift.behindsCheckStart(); err != nil {
@@ -562,7 +664,7 @@ func (shift *Shift) checkAndSetReadlock() {
 	// 1. WaitUntilPos
 	{
 		masterPos := shift.masterPosition()
-		log.Info("shift.wait.until.pos[%#v]...", masterPos)
+		log.Info("shift.wait.until.pos[%+v]...", masterPos)
 		if err := shift.canal.WaitUntilPos(*masterPos, time.Hour*12); err != nil {
 			shift.panicMe("shift.set.radon.wait.until.pos[%#v].error:%+v", masterPos, err)
 			return
@@ -583,9 +685,9 @@ func (shift *Shift) checkAndSetReadlock() {
 	// 3. Wait again
 	{
 		masterPos := shift.masterPosition()
-		log.Info("shift.wait.until.pos[%#v]...", masterPos)
+		log.Info("shift.wait.until.pos[%+v]...", masterPos)
 		if err := shift.canal.WaitUntilPos(*masterPos, time.Second*300); err != nil {
-			shift.panicMe("shift.wait.until.pos[%#v].error:%+v", masterPos, err)
+			shift.panicMe("shift.wait.until.pos[%+v].error:%+v", masterPos, err)
 			return
 		}
 		log.Info("shift.wait.until.pos.done...")
