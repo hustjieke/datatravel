@@ -6,6 +6,7 @@ build:
 	@echo "--> Building..."
 	@mkdir -p bin/
 	go build -v -o bin/datatravel --ldflags '$(LDFLAGS)' src/datatravel/datatravel.go
+	go build -v -o bin/datatravelcli --ldflags '$(LDFLAGS)' src/cli/cli.go
 	@chmod 755 bin/*
 
 clean:
