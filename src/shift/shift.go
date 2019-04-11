@@ -9,11 +9,12 @@
 package shift
 
 import (
-	"config"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"config"
 	"xlog"
 
 	"github.com/pingcap/errors"
@@ -415,6 +416,7 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 const (
 	secondsPerMinute = 60
 	secondsPerHour   = secondsPerMinute * 60
+	secondsSleep     = 10
 )
 
 func (shift *Shift) dumpProgress() error {
@@ -426,10 +428,14 @@ func (shift *Shift) dumpProgress() error {
 		toConn := s.toPool.Get()
 		defer s.toPool.Put(toConn)
 		var dumpTime uint64
-		time.Sleep(10 * time.Second)
+		time.Sleep(secondsSleep * time.Second)
 		log.Info("cfg.FromRows when dump:", cfg.FromRows)
+
+		progress := &config.TravelProgress{
+			PositionBehinds: "not start yet!",
+		}
 		for {
-			dumpTime += 10
+			dumpTime += secondsSleep
 
 			// Get rows from toConn
 			cfg.ToRows = 0
@@ -459,27 +465,40 @@ func (shift *Shift) dumpProgress() error {
 				}
 			}
 
+			// Calculate remain time
 			avgRate := cfg.ToRows / dumpTime
 			// Unit: second
 			remainTime := (cfg.FromRows - cfg.ToRows) / avgRate
 			seconds := remainTime % secondsPerMinute
 			hours := (remainTime - seconds) / secondsPerHour
 			minutes := (remainTime - seconds - hours*secondsPerHour) / secondsPerMinute
-			log.Info("shift.remain.hour[%+v], minutes[%+v]", hours, minutes)
 
-			// s.cfg.RemainTime = (fromSize - toSize) / avgRate
-
+			// Calculate progress rate
+			// If data is not so large, it may be happened that per > 100
+			// as the result of "show table status" is estimate in MySQL
 			per := uint((float64(cfg.ToRows) / float64(cfg.FromRows)) * 100)
-			if per > 90 {
-				log.Info("wait.dump.shift.dump.done.during.progress[%+v]", per)
-				<-s.canal.WaitDumpDone()
+			if per > 100 {
 				per = 100
-				log.Info("shift.dump.progress[%+v]", per)
+			}
+
+			timeStr := fmt.Sprintf("%v%v %v%v", hours, "hours", minutes, "minutes")
+			perStr := fmt.Sprintf("%v%v", per, "%")
+			progress.DumpRemainTime = timeStr
+			progress.DumpProgressRate = perStr
+			config.UpdateTravelProgress(progress, cfg.MetaDir)
+			log.Info("travel.progress%+v", progress)
+
+			if per > 90 {
+				log.Info("wait.dump.shift.dump.done.during.progress:%+v", perStr)
+				<-s.canal.WaitDumpDone()
+				progress.DumpProgressRate = fmt.Sprintf("%v", "100%")
+				progress.DumpRemainTime = fmt.Sprintf("%v %v", "0hours", "0minutes")
+				config.UpdateTravelProgress(progress, cfg.MetaDir)
+				log.Info("travel.progress%+v", progress)
 				break
 			}
-			log.Info("shift.dump.progress[%+v]", per)
 
-			time.Sleep(30 * time.Second)
+			time.Sleep(secondsSleep * time.Second)
 		}
 	}(shift)
 
@@ -534,14 +553,34 @@ func (shift *Shift) behindsCheckStart() error {
 		log.Info("shift.wait.dumper.background.worker.again...")
 		shift.handler.WaitWorkerDone()
 		log.Info("shift.wait.dumper.background.worker.done...")
+		progress := &config.TravelProgress{
+			DumpProgressRate: "100%",
+			DumpRemainTime:   "0",
+		}
 
 		for range s.behindsTicker.C {
+			// Get master and sync gtid
+			if s.canal.SyncedGTIDSet() != nil {
+				syncGtid := s.canal.SyncedGTIDSet().(*mysql.MysqlGTIDSet)
+				progress.SynGTID = syncGtid.String()
+			}
+			if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
+				log.Panic("error:", err)
+			} else {
+				progress.MasterGTID = masterGtid.String()
+			}
+
 			masterPos := s.masterPosition()
 			syncPos := s.canal.SyncedPosition()
 			behinds := int(masterPos.Pos - syncPos.Pos)
-			log.Info("--shift.check.behinds[%d]--master[%+v]--synced[%+v]", behinds, masterPos, syncPos)
+			progress.PositionBehinds = fmt.Sprintf("%v", behinds)
+			config.UpdateTravelProgress(progress, s.cfg.MetaDir)
+			log.Info("travel.progress%+v", progress)
 			if behinds <= shift.cfg.Behinds {
 				shift.checkAndSetReadlock()
+				progress.PositionBehinds = "0"
+				config.UpdateTravelProgress(progress, s.cfg.MetaDir)
+				log.Info("travel.progress%+v", progress)
 				return
 			}
 		}
@@ -577,19 +616,19 @@ func (shift *Shift) Start() error {
 
 // Close used to destroy all the resource.
 func (shift *Shift) Close() {
+	log := shift.log
 	shift.behindsTicker.Stop()
-	shift.fromPool.Close()
-	shift.toPool.Close()
 	shift.canal.Close()
 
-	// If travel success, we do not cleanup on from
-	// If travel failed, we do cleanup on to and unlock tables on from
+	// if we catch
 	if !shift.allDone {
-		if shift.cfg.Cleanup {
-			shift.Cleanup()
-		}
 		shift.unLockTables()
+		log.Info("datatravel.migrates.data.fail!")
+	} else {
+		log.Info("datatravel.migrates.all.data.success!")
 	}
+	shift.fromPool.Close()
+	shift.toPool.Close()
 }
 
 func (shift *Shift) Done() chan bool {

@@ -24,6 +24,7 @@ import (
 var (
 	toFlavor          = flag.String("to-flavor", "", "Destination db flavor, like mysql/mariadb/radondb")
 	setGlobalReadLock = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
+	metaDir           = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
 
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
@@ -58,7 +59,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	build := build.GetInfo()
-	fmt.Printf("shift:[%+v]\n", build)
+	fmt.Printf("datatravel:[%+v]\n", build)
 
 	// flags.
 	flag.Parse()
@@ -70,11 +71,12 @@ func main() {
 	check(log)
 	fmt.Println(`
            IMPORTANT: Please check that the shift run completes successfully.
-           At the end of a successful shift run prints "shift.completed.OK!".`)
+           At the end of a successful shift run prints "datatravel.migrates.all.data.success!".`)
 
 	cfg := &config.Config{
 		ToFlavor:          *toFlavor,
 		SetGlobalReadLock: *setGlobalReadLock,
+		MetaDir:           *metaDir,
 		From:              *from,
 		FromUser:          *fromUser,
 		FromPassword:      *fromPassword,
@@ -93,7 +95,7 @@ func main() {
 		Checksum:          *checksum,
 	}
 	cfg.DBTablesMaps = make(map[string][]string)
-	log.Info("shift.cfg:%+v", cfg)
+	log.Info("datatravel.cfg:%+v", cfg)
 	shift := shift.NewShift(log, cfg)
 	if err := shift.Start(); err != nil {
 		log.Panicf("shift.start.error:%+v", err)
@@ -111,8 +113,8 @@ func main() {
 
 	select {
 	case <-shift.Done():
-		fmt.Println("shift.completed.OK!")
+		fmt.Println("datatravel.exit.normal!")
 	case <-sc:
-		fmt.Println("shift.signal.done...")
+		fmt.Println("datatravel.catch.signal...")
 	}
 }

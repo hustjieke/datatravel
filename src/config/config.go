@@ -8,7 +8,7 @@
 
 package config
 
-// Use flavor for different destinations,
+// Use flavor for different target cluster
 const (
 	ToMySQLFlavor   = "mysql"
 	ToMariaDBFlavor = "mariadb"
@@ -18,6 +18,7 @@ const (
 type Config struct {
 	ToFlavor          string
 	SetGlobalReadLock bool
+	MetaDir           string
 
 	From         string
 	FromUser     string
