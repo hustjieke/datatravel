@@ -110,6 +110,8 @@ func (c *Canal) runSyncBinlog() error {
 			if err := c.eventHandler.OnGTID(gtid); err != nil {
 				return errors.Trace(err)
 			}
+			// save GTID
+			c.master.UpdateGTIDSet(gtid)
 		case *replication.GTIDEvent:
 			u, _ := uuid.FromBytes(e.SID)
 			gtid, err := mysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d", u.String(), e.GNO))
@@ -119,6 +121,8 @@ func (c *Canal) runSyncBinlog() error {
 			if err := c.eventHandler.OnGTID(gtid); err != nil {
 				return errors.Trace(err)
 			}
+			// save GTID
+			c.master.UpdateGTIDSet(gtid)
 		case *replication.QueryEvent:
 			if e.GSet != nil {
 				c.master.UpdateGTIDSet(e.GSet)
