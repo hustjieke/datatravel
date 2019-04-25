@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	toFlavor          = flag.String("to-flavor", "", "Destination db flavor, like mysql/mariadb/radondb")
+	toFlavor          = flag.String("to-flavor", "mysql", "Destination db flavor, like mysql/mariadb/radondb")
 	setGlobalReadLock = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
 	metaDir           = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
 

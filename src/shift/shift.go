@@ -416,7 +416,7 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 const (
 	secondsPerMinute = 60
 	secondsPerHour   = secondsPerMinute * 60
-	secondsSleep     = 10
+	secondsSleep     = 30
 )
 
 func (shift *Shift) dumpProgress() error {
