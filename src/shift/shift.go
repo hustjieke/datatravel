@@ -54,7 +54,7 @@ func (shift *Shift) prepareConnection() error {
 	log := shift.log
 	cfg := shift.cfg
 
-	fromPool, err := NewPool(log, 16, cfg.From, cfg.FromUser, cfg.FromPassword)
+	fromPool, err := NewPool(log, 16, cfg.From, cfg.FromUser, cfg.FromPassword, cfg.FkCheck)
 	if err != nil {
 		log.Error("shift.start.from.connection.pool.error:%+v", err)
 		return err
@@ -62,7 +62,7 @@ func (shift *Shift) prepareConnection() error {
 	shift.fromPool = fromPool
 	log.Info("shift.[%s].connection.done...", cfg.From)
 
-	toPool, err := NewPool(log, cfg.Threads, cfg.To, cfg.ToUser, cfg.ToPassword)
+	toPool, err := NewPool(log, cfg.Threads, cfg.To, cfg.ToUser, cfg.ToPassword, cfg.FkCheck)
 	if err != nil {
 		log.Error("shift.start.to.connection.pool.error:%+v", err)
 		return err
@@ -176,6 +176,7 @@ func (shift *Shift) prepareTable() error {
 			log.Info("shift.prepare.table.done...")
 		}
 	}
+
 	return nil
 }
 

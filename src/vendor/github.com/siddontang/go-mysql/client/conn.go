@@ -239,6 +239,13 @@ func (c *Conn) IsInTransaction() bool {
 	return c.status&SERVER_STATUS_IN_TRANS > 0
 }
 
+func (c *Conn) SetForeignKeyCheckDisable() error {
+	if _, err := c.exec("SET FOREIGN_KEY_CHECKS = 0"); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
 func (c *Conn) GetCharset() string {
 	return c.charset
 }
