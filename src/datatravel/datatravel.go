@@ -22,9 +22,10 @@ import (
 )
 
 var (
-	toFlavor          = flag.String("to-flavor", "", "Destination db flavor, like mysql/mariadb/radondb")
+	toFlavor          = flag.String("to-flavor", "mysql", "Destination db flavor, like mysql/mariadb/radondb")
 	setGlobalReadLock = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
 	metaDir           = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
+	fkCheck           = flag.Bool("fk-check", true, "FOREIGN_KEY_CHECK ture or false to travel data")
 
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
@@ -77,6 +78,7 @@ func main() {
 		ToFlavor:          *toFlavor,
 		SetGlobalReadLock: *setGlobalReadLock,
 		MetaDir:           *metaDir,
+		FkCheck:           *fkCheck,
 		From:              *from,
 		FromUser:          *fromUser,
 		FromPassword:      *fromPassword,

@@ -15,10 +15,9 @@ import (
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/schema"
-	"github.com/xelabs/go-mysqlstack/common"
 )
 
-func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
+func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 	var conn *client.Conn
 	log := h.log
 	h.wg.Add(1)
@@ -52,19 +51,8 @@ func (h *EventHandler) InsertRow(e *canal.RowsEvent, systemTable bool) {
 				}
 			}
 
-			// TODO if not travel RadonDB, we don`t need to add columns
-			cols := common.NewBuffer(256)
-			len := len(e.Table.Columns)
-			for idx, col := range e.Table.Columns {
-				cols.WriteString(col.Name)
-				if idx != (len - 1) {
-					cols.WriteString(",")
-				}
-			}
-			columns, _ := cols.ReadStringNUL()
-
 			query := &Query{
-				sql:       fmt.Sprintf("insert into `%s`.`%s`(%s) values (%s)", e.Table.Schema, e.Table.Name, columns, strings.Join(values, ",")),
+				sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
 				typ:       QueryType_INSERT,
 				skipError: systemTable,
 			}

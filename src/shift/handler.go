@@ -9,14 +9,13 @@
 package shift
 
 import (
+	"config"
 	"strings"
 	"sync"
 	"xlog"
 
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
-	//"github.com/siddontang/go-mysql/mysql"
-	//"github.com/siddontang/go-mysql/replication"
 )
 
 type QueryType int
@@ -59,7 +58,12 @@ func (h *EventHandler) OnRow(e *canal.RowsEvent) error {
 	switch e.Action {
 	case canal.InsertAction:
 		_, isSystem := sysDatabases[strings.ToLower(e.Table.Schema)]
-		h.InsertRow(e, isSystem)
+		if h.shift.cfg.ToFlavor == config.ToMySQLFlavor ||
+			h.shift.cfg.ToFlavor == config.ToMariaDBFlavor {
+			h.InsertMySQLRow(e, isSystem)
+		} else {
+			h.InsertRadonDBRow(e, isSystem)
+		}
 	case canal.DeleteAction:
 		h.DeleteRow(e)
 	case canal.UpdateAction:

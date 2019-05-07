@@ -26,13 +26,16 @@ type Pool struct {
 	password string
 }
 
-func NewPool(log *xlog.Log, cap int, host string, user string, password string) (*Pool, error) {
+func NewPool(log *xlog.Log, cap int, host string, user string, password string, fkCheck bool) (*Pool, error) {
 	conns := make(chan *client.Conn, cap)
 	for i := 0; i < cap; i++ {
 		to, err := client.Connect(host, user, password, "")
 		if err != nil {
 			log.Error("shift.new.pool.connection.error:%+v", err)
 			return nil, err
+		}
+		if !fkCheck {
+			to.SetForeignKeyCheckDisable()
 		}
 		conns <- to
 	}

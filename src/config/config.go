@@ -19,6 +19,7 @@ type Config struct {
 	ToFlavor          string
 	SetGlobalReadLock bool
 	MetaDir           string
+	FkCheck           bool
 
 	From         string
 	FromUser     string

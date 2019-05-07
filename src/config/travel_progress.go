@@ -19,11 +19,11 @@ const (
 
 // TravelProgress used to store progress rate msg during travel data
 type TravelProgress struct {
-	DumpProgressRate string `json:"dump-progress"`
+	DumpProgressRate string `json:"dump-progress-rate"`
 	DumpRemainTime   string `json:"remain-time"`
 	PositionBehinds  string `json:"position-behinds"`
-	SynGTID          string `json:target syncer gtid`
-	MasterGTID       string `json:src master gtid`
+	SynGTID          string `json:"current-sync-gtid"`
+	MasterGTID       string `json:"current-src-mysql-gtid"`
 }
 
 // UpdateTravelProgress used to update progress rate during travel data
