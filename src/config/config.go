@@ -20,7 +20,6 @@ type Config struct {
 	SetGlobalReadLock bool
 	MetaDir           string
 	FkCheck           bool
-
 	From         string
 	FromUser     string
 	FromPassword string

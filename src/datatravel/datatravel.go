@@ -26,7 +26,7 @@ var (
 	setGlobalReadLock = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
 	metaDir           = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
 	fkCheck           = flag.Bool("fk-check", true, "FOREIGN_KEY_CHECK ture or false to travel data")
-
+  
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
 	fromPassword = flag.String("from-password", "", "MySQL user password")
@@ -79,6 +79,7 @@ func main() {
 		SetGlobalReadLock: *setGlobalReadLock,
 		MetaDir:           *metaDir,
 		FkCheck:           *fkCheck,
+
 		From:              *from,
 		FromUser:          *fromUser,
 		FromPassword:      *fromPassword,
