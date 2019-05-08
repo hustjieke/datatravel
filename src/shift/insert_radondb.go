@@ -10,8 +10,10 @@ package shift
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/imroc/biu"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/schema"
@@ -44,15 +46,26 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 				if _, ok := v.([]byte); ok {
 					values = append(values, fmt.Sprintf("%q", v))
 				} else {
-					if e.Table.Columns[idx].Type == schema.TYPE_NUMBER {
+					switch {
+					case e.Table.Columns[idx].Type == schema.TYPE_NUMBER:
 						values = append(values, fmt.Sprintf("%d", v))
-					} else {
+					case e.Table.Columns[idx].Type == schema.TYPE_BIT:
+						hexstr := fmt.Sprintf("%x", v)
+						if num64, err := strconv.ParseUint(hexstr, 16, 64); err != nil {
+							panic(err)
+						} else {
+							num64bit := biu.ToBinaryString(num64)
+							num64bit = strings.Replace(num64bit, " ", "", -1)
+							num64bit = strings.TrimLeft(num64bit, "[")
+							num64bit = strings.TrimRight(num64bit, "]")
+							values = append(values, fmt.Sprintf("B'%s'", num64bit))
+						}
+					default:
 						values = append(values, fmt.Sprintf("%#v", v))
 					}
 				}
 			}
 
-			// TODO if not travel RadonDB, we don`t need to add columns
 			cols := common.NewBuffer(256)
 			len := len(e.Table.Columns)
 			for idx, col := range e.Table.Columns {
