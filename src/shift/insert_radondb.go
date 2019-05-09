@@ -50,7 +50,9 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 					case e.Table.Columns[idx].Type == schema.TYPE_NUMBER:
 						values = append(values, fmt.Sprintf("%d", v))
 					case e.Table.Columns[idx].Type == schema.TYPE_BIT:
+						// Here no need to add prefix "0x" for hexstr
 						hexstr := fmt.Sprintf("%x", v)
+						log.Debug("bit hexstr:", hexstr)
 						if num64, err := strconv.ParseUint(hexstr, 16, 64); err != nil {
 							panic(err)
 						} else {
@@ -61,7 +63,14 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 							values = append(values, fmt.Sprintf("B'%s'", num64bit))
 						}
 					default:
-						values = append(values, fmt.Sprintf("%#v", v))
+						switch e.Table.Columns[idx].RawType {
+						case "tinyblob", "blob", "mediumblob", "longblob":
+							// Here we should add prefix "0x" for hex
+							values = append(values, fmt.Sprintf("0x%x", v))
+						default:
+							log.Debug("insert table type and raw type:", e.Table.Name, e.Table.Columns[idx].Type, e.Table.Columns[idx].RawType)
+							values = append(values, fmt.Sprintf("%#v", v))
+						}
 					}
 				}
 			}
