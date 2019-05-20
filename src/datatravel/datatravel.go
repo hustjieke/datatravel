@@ -22,10 +22,11 @@ import (
 )
 
 var (
-	toFlavor          = flag.String("to-flavor", "mysql", "Destination db flavor, like mysql/mariadb/radondb")
-	setGlobalReadLock = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
-	metaDir           = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
-	fkCheck           = flag.Bool("fk-check", true, "FOREIGN_KEY_CHECK ture or false to travel data")
+	toFlavor           = flag.String("to-flavor", "mysql", "Destination db flavor, like mysql/mariadb/radondb")
+	setGlobalReadLock  = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
+	metaDir            = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
+	fkCheck            = flag.Bool("fk-check", true, "FOREIGN_KEY_CHECK ture or false to travel data")
+	maxAllowedPacketMB = flag.Int("max-allowd-packet-MB", 16, "Set to change the default max_allowed_packet size")
 
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
@@ -75,26 +76,27 @@ func main() {
            At the end of a successful shift run prints "datatravel.migrates.all.data.success!".`)
 
 	cfg := &config.Config{
-		ToFlavor:          *toFlavor,
-		SetGlobalReadLock: *setGlobalReadLock,
-		MetaDir:           *metaDir,
-		FkCheck:           *fkCheck,
-		From:              *from,
-		FromUser:          *fromUser,
-		FromPassword:      *fromPassword,
-		FromDatabase:      *fromDatabase,
-		FromTable:         *fromTable,
-		To:                *to,
-		ToUser:            *toUser,
-		ToPassword:        *toPassword,
-		ToDatabase:        *toDatabase,
-		ToTable:           *toTable,
-		Cleanup:           *cleanup,
-		MySQLDump:         *mysqlDump,
-		Threads:           *threads,
-		Behinds:           *behinds,
-		RadonURL:          *radonURL,
-		Checksum:          *checksum,
+		ToFlavor:           *toFlavor,
+		SetGlobalReadLock:  *setGlobalReadLock,
+		MetaDir:            *metaDir,
+		FkCheck:            *fkCheck,
+		MaxAllowedPacketMB: *maxAllowedPacketMB,
+		From:               *from,
+		FromUser:           *fromUser,
+		FromPassword:       *fromPassword,
+		FromDatabase:       *fromDatabase,
+		FromTable:          *fromTable,
+		To:                 *to,
+		ToUser:             *toUser,
+		ToPassword:         *toPassword,
+		ToDatabase:         *toDatabase,
+		ToTable:            *toTable,
+		Cleanup:            *cleanup,
+		MySQLDump:          *mysqlDump,
+		Threads:            *threads,
+		Behinds:            *behinds,
+		RadonURL:           *radonURL,
+		Checksum:           *checksum,
 	}
 	cfg.DBTablesMaps = make(map[string][]string)
 	log.Info("datatravel.cfg:%+v", cfg)

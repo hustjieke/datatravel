@@ -311,6 +311,7 @@ func (shift *Shift) prepareCanal() error {
 	// cfg.Dump.TableDB = conf.FromDatabase
 	// cfg.Dump.Tables = []string{conf.FromTable}
 	cfg.Dump.Databases = conf.Databases
+	cfg.Dump.MaxAllowedPacketMB = conf.MaxAllowedPacketMB
 
 	// canal
 	canal, err := canal.NewCanal(cfg)
@@ -637,7 +638,7 @@ func (shift *Shift) Done() chan bool {
 }
 
 func (shift *Shift) panicMe(format string, v ...interface{}) {
-	shift.Cleanup()
+	shift.Close()
 	shift.panicHandler(shift.log, format, v)
 }
 
@@ -679,9 +680,7 @@ func (shift *Shift) checkAndSetReadlock() {
 	// 4. Checksum table.
 	if shift.cfg.Checksum {
 		switch shift.cfg.ToFlavor {
-		case config.ToMySQLFlavor:
-		case config.ToMariaDBFlavor:
-		case config.ToRadonDBFlavor:
+		case config.ToMySQLFlavor, config.ToMariaDBFlavor, config.ToRadonDBFlavor:
 			log.Info("shift.checksum.table...")
 			if err := shift.ChecksumTables(); err != nil {
 				shift.panicMe("shift.checksum.table.error:%+v", err)
