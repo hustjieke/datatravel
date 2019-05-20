@@ -10,10 +10,8 @@ package shift
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
-	"github.com/imroc/biu"
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/schema"
@@ -49,25 +47,14 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 					case e.Table.Columns[idx].Type == schema.TYPE_NUMBER:
 						values = append(values, fmt.Sprintf("%d", v))
 					case e.Table.Columns[idx].Type == schema.TYPE_BIT:
-						// Here no need to add prefix "0x" for hexstr
-						hexstr := fmt.Sprintf("%x", v)
-						log.Debug("bit hexstr:", hexstr)
-						if num64, err := strconv.ParseUint(hexstr, 16, 64); err != nil {
-							panic(err)
-						} else {
-							num64bit := biu.ToBinaryString(num64)
-							num64bit = strings.Replace(num64bit, " ", "", -1)
-							num64bit = strings.TrimLeft(num64bit, "[")
-							num64bit = strings.TrimRight(num64bit, "]")
-							values = append(values, fmt.Sprintf("B'%s'", num64bit))
-						}
+						// Here we should add prefix "0x" for hex
+						values = append(values, fmt.Sprintf("0x%x", v))
 					default:
 						switch e.Table.Columns[idx].RawType {
 						case "tinyblob", "blob", "mediumblob", "longblob":
 							// Here we should add prefix "0x" for hex
 							values = append(values, fmt.Sprintf("0x%x", v))
 						default:
-							log.Debug("insert table type and raw type:", e.Table.Name, e.Table.Columns[idx].Type, e.Table.Columns[idx].RawType)
 							values = append(values, fmt.Sprintf("%#v", v))
 						}
 					}
