@@ -24,8 +24,7 @@ func (shift *Shift) Cleanup() {
 
 	// Cleanup.
 	switch shift.cfg.ToFlavor {
-	case config.ToMySQLFlavor:
-	case config.ToMariaDBFlavor:
+	case config.ToMySQLFlavor, config.ToMariaDBFlavor:
 		// For Mysql and MariaDB, we drop all tables
 		shift.cleanupToByDrop()
 	case config.ToRadonDBFlavor:

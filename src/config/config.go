@@ -16,10 +16,11 @@ const (
 )
 
 type Config struct {
-	ToFlavor          string
-	SetGlobalReadLock bool
-	MetaDir           string
-	FkCheck           bool
+	ToFlavor           string
+	SetGlobalReadLock  bool
+	MetaDir            string
+	FkCheck            bool
+	MaxAllowedPacketMB int
 
 	From         string
 	FromUser     string
