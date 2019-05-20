@@ -147,6 +147,7 @@ func (shift *Shift) prepareTable() error {
 			tables = append(tables, tbl)
 			rows, _ := r.GetUintByName(i, tblRows)
 			cfg.FromRows += rows
+			log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
 		}
 		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
@@ -247,6 +248,7 @@ func (shift *Shift) checkTableExistForRadonDB() error {
 			tables = append(tables, tbl)
 			rows, _ := r.GetUintByName(i, tblRows)
 			cfg.FromRows += rows
+			log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
 		}
 		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
@@ -392,6 +394,7 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 			log.Error("shift.checksum.table.err:%+v", err)
 			return err
 		}
+		log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 	}
 	shift.wg.Done()
 	return nil
