@@ -44,32 +44,20 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 			if len(pks) > 0 {
 				for _, pk := range pks {
 					v := v1Row[pk]
-					if _, ok := v.([]byte); ok {
-						wheres = append(wheres, fmt.Sprintf("%s=%q", e.Table.Columns[pk].Name, v))
-					} else {
-						wheres = append(wheres, fmt.Sprintf("%s=%#v", e.Table.Columns[pk].Name, v))
-					}
+					wheres = append(wheres, fmt.Sprintf("%s=%s", e.Table.Columns[pk].Name, h.ParseValue(e, pk, v)))
 				}
 			}
 
 			for i := range v2Row {
 				v2 := v2Row[i]
 				if v2 != nil {
-					if _, ok := v2.([]byte); ok {
-						values = append(values, fmt.Sprintf("%s=%q", e.Table.Columns[i].Name, v2))
-					} else {
-						values = append(values, fmt.Sprintf("%s=%#v", e.Table.Columns[i].Name, v2))
-					}
+					values = append(values, fmt.Sprintf("%s=%s", e.Table.Columns[i].Name, h.ParseValue(e, i, v2)))
 				}
 
 				if len(pks) == 0 {
 					v1 := v1Row[i]
 					if v1 != nil {
-						if _, ok := v1.([]byte); ok {
-							wheres = append(wheres, fmt.Sprintf("%s=%q", e.Table.Columns[i].Name, v1))
-						} else {
-							wheres = append(wheres, fmt.Sprintf("%s=%#v", e.Table.Columns[i].Name, v1))
-						}
+						wheres = append(wheres, fmt.Sprintf("%s=%s", e.Table.Columns[i].Name, h.ParseValue(e, i, v1)))
 					}
 				}
 			}

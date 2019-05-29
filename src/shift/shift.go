@@ -461,7 +461,7 @@ func (shift *Shift) dumpProgress() error {
 		defer s.toPool.Put(toConn)
 		var dumpTime uint64
 		time.Sleep(secondsSleep * time.Second)
-		log.Info("cfg.FromRows when dump:%+v", cfg.FromRows)
+		log.Info("cfg.FromRows when dump:%d", cfg.FromRows)
 
 		progress := &config.TravelProgress{
 			PositionBehinds: "not start yet!",

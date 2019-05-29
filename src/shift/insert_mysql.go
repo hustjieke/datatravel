@@ -14,7 +14,6 @@ import (
 
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
-	"github.com/siddontang/go-mysql/schema"
 )
 
 func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
@@ -34,30 +33,7 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 			}
 
 			for idx, v := range row {
-				if v == nil {
-					values = append(values, fmt.Sprintf("NULL"))
-					continue
-				}
-
-				if _, ok := v.([]byte); ok {
-					values = append(values, fmt.Sprintf("%q", v))
-				} else {
-					switch {
-					case e.Table.Columns[idx].Type == schema.TYPE_NUMBER:
-						values = append(values, fmt.Sprintf("%d", v))
-					case e.Table.Columns[idx].Type == schema.TYPE_BIT:
-						// Here we should add prefix "0x" for hex
-						values = append(values, fmt.Sprintf("0x%x", v))
-					default:
-						switch e.Table.Columns[idx].RawType {
-						case "tinyblob", "blob", "mediumblob", "longblob":
-							// Here we should add prefix "0x" for hex
-							values = append(values, fmt.Sprintf("0x%x", v))
-						default:
-							values = append(values, fmt.Sprintf("%#v", v))
-						}
-					}
-				}
+				values = append(values, h.ParseValue(e, idx, v))
 			}
 
 			query := &Query{
