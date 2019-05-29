@@ -53,17 +53,16 @@ func NewPool(log *xlog.Log, cap int, host string, user string, password string, 
 func (p *Pool) Get() *client.Conn {
 	log := p.log
 	var err error
-	p.mu.Lock()
-	defer p.mu.Unlock()
 
-	if p.conns == nil {
-		log.Error("datatravel.pool.get.conns.is.nil")
+	conns := p.getConns()
+	if conns == nil {
+		log.Error("datatravel.shift.get.conns.is.nil")
 		return nil
 	}
 
-	conn := <-p.conns
+	conn := <-conns
 	if conn == nil {
-		log.Error("datatravel.pool.get.conn.is.nil")
+		log.Error("datatravel.shift.get.conn.is.nil")
 		return nil
 	}
 
@@ -80,13 +79,12 @@ func (p *Pool) Get() *client.Conn {
 
 func (p *Pool) Put(conn *client.Conn) {
 	log := p.log
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.conns == nil || conn == nil {
-		log.Error("datatravel.pool.put.conns.or.conn.is.nil")
+	conns := p.getConns()
+	if conns == nil {
+		log.Error("datatravel.shift.put.conns.is.nil")
 		return
 	}
-	p.conns <- conn
+	conns <- conn
 }
 
 func (p *Pool) Close() {
@@ -95,12 +93,17 @@ func (p *Pool) Close() {
 	defer p.mu.Unlock()
 
 	if p.conns == nil {
-		log.Error("datatravel.pool.close.conns.is.nil")
-		return
+		log.Error("datatravel.shift.close.pool.conns.is.nil")
 	}
 	close(p.conns)
 	for conn := range p.conns {
 		conn.Close()
 	}
 	p.conns = nil
+}
+
+func (p *Pool) getConns() chan *client.Conn {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.conns
 }
