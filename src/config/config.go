@@ -34,11 +34,9 @@ type Config struct {
 	ToDatabase string
 	ToTable    string
 
-	Cleanup   bool
 	MySQLDump string
 	Threads   int
 	Behinds   int
-	RadonURL  string
 	Checksum  bool
 
 	Databases    []string

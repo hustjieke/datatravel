@@ -37,6 +37,8 @@ type Shift struct {
 
 	// wg used for check when travel data done
 	wg sync.WaitGroup
+	// used for set flush tables with read lock and unlock tables;
+	readLockConn *client.Conn
 }
 
 func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
@@ -171,7 +173,7 @@ func (shift *Shift) prepareTable() error {
 			}
 			sql = strings.Replace(sql, fmt.Sprintf("CREATE TABLE `%s`", tbl), fmt.Sprintf("CREATE TABLE `%s`.`%s`", db, tbl), 1)
 			if _, err := toConn.Execute(sql); err != nil {
-				log.Error("shift.create.[%s].table.sql[%s].error:%+v", cfg.From, sql, err)
+				log.Error("shift.create.[%s].table.sql[%s].error:%+v", cfg.To, sql, err)
 				return err
 			}
 			log.Info("shift.prepare.table.done...")
@@ -390,9 +392,10 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 		tochecksum = <-tochan
 
 		if fromchecksum != tochecksum {
-			err := fmt.Errorf("checksum not equivalent: from-table checksum is %v, to-table checksum is %v", fromchecksum, tochecksum)
+			err := fmt.Errorf("checksum not equivalent: from-table[%v.%v] checksum is %v, to-table[%v.%v] checksum is %v", db, tbl, fromchecksum, db, tbl, tochecksum)
 			log.Error("shift.checksum.table.err:%+v", err)
-			return err
+			shift.wg.Done()
+			shift.panicMe("shift.checksum.table.err:", err)
 		}
 		log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 	}
@@ -434,7 +437,7 @@ func (shift *Shift) dumpProgress() error {
 		defer s.toPool.Put(toConn)
 		var dumpTime uint64
 		time.Sleep(secondsSleep * time.Second)
-		log.Info("cfg.FromRows when dump:", cfg.FromRows)
+		log.Info("cfg.FromRows when dump:%+v", cfg.FromRows)
 
 		progress := &config.TravelProgress{
 			PositionBehinds: "not start yet!",
@@ -570,7 +573,7 @@ func (shift *Shift) behindsCheckStart() error {
 				progress.SynGTID = syncGtid.String()
 			}
 			if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
-				log.Panic("error:", err)
+				log.Panic("error:%+v", err)
 			} else {
 				progress.MasterGTID = masterGtid.String()
 			}
@@ -691,7 +694,7 @@ func (shift *Shift) checkAndSetReadlock() {
 			}
 			log.Info("shift.checksum.table.done...")
 		default:
-			log.Error("shift.cleanup.not.support.flavor.:%+v", shift.cfg.ToFlavor)
+			log.Error("shift.checksum.not.support.flavor.:%+v", shift.cfg.ToFlavor)
 		}
 	}
 
@@ -704,18 +707,17 @@ func (shift *Shift) checkAndSetReadlock() {
 }
 
 // Func setGlobalReadLock is used to add a global read
-// lock to "from" when ( master position - syncer position) is less than 2048
+// lock "from" when ( master position - syncer position) is less than 2048
 func (shift *Shift) setGlobalReadLock() {
 	sql1 := "FLUSH TABLES"
 	sql2 := "FLUSH TABLES WITH READ LOCK"
-	fromConn := shift.fromPool.Get()
-	defer shift.fromPool.Put(fromConn)
+	shift.readLockConn = shift.fromPool.Get()
 
-	if _, err := fromConn.Execute(sql1); err != nil {
+	if _, err := shift.readLockConn.Execute(sql1); err != nil {
 		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql1, err)
 		return
 	}
-	if _, err := fromConn.Execute(sql2); err != nil {
+	if _, err := shift.readLockConn.Execute(sql2); err != nil {
 		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql2, err)
 		return
 	}
@@ -725,10 +727,11 @@ func (shift *Shift) setGlobalReadLock() {
 // It will be called when travel data failed.
 func (shift *Shift) unLockTables() {
 	sql := "UNLOCK TABLES"
-	fromConn := shift.fromPool.Get()
-	defer shift.fromPool.Put(fromConn)
 
-	if _, err := fromConn.Execute(sql); err != nil {
+	if shift.readLockConn == nil {
+		return
+	}
+	if _, err := shift.readLockConn.Execute(sql); err != nil {
 		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql, err)
 		return
 	}

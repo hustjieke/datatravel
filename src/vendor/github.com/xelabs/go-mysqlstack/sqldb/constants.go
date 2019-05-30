@@ -15,38 +15,38 @@ package sqldb
 // https://dev.mysql.com/doc/internals/en/command-phase.html
 // include/my_command.h
 const (
-	COM_SLEEP byte = iota
-	COM_QUIT
-	COM_INIT_DB
-	COM_QUERY
-	COM_FIELD_LIST
-	COM_CREATE_DB
-	COM_DROP_DB
-	COM_REFRESH
-	COM_SHUTDOWN
-	COM_STATISTICS
-	COM_PROCESS_INFO
-	COM_CONNECT
-	COM_PROCESS_KILL
-	COM_DEBUG
-	COM_PING
-	COM_TIME
-	COM_DELAYED_INSERT
-	COM_CHANGE_USER
-	COM_BINLOG_DUMP
-	COM_TABLE_DUMP
-	COM_CONNECT_OUT
-	COM_REGISTER_SLAVE
-	COM_STMT_PREPARE
-	COM_STMT_EXECUTE
-	COM_STMT_SEND_LONG_DATA
-	COM_STMT_CLOSE
-	COM_STMT_RESET
-	COM_SET_OPTION
-	COM_STMT_FETCH
-	COM_DAEMON
-	COM_BINLOG_DUMP_GTID
-	COM_RESET_CONNECTION
+	COM_SLEEP               = 0x00
+	COM_QUIT                = 0x01
+	COM_INIT_DB             = 0x02
+	COM_QUERY               = 0x03
+	COM_FIELD_LIST          = 0x04
+	COM_CREATE_DB           = 0x05
+	COM_DROP_DB             = 0x06
+	COM_REFRESH             = 0x07
+	COM_SHUTDOWN            = 0x08
+	COM_STATISTICS          = 0x09
+	COM_PROCESS_INFO        = 0x0a
+	COM_CONNECT             = 0x0b
+	COM_PROCESS_KILL        = 0x0c
+	COM_DEBUG               = 0x0d
+	COM_PING                = 0x0e
+	COM_TIME                = 0x0f
+	COM_DELAYED_INSERT      = 0x10
+	COM_CHANGE_USER         = 0x11
+	COM_BINLOG_DUMP         = 0x12
+	COM_TABLE_DUMP          = 0x13
+	COM_CONNECT_OUT         = 0x14
+	COM_REGISTER_SLAVE      = 0x15
+	COM_STMT_PREPARE        = 0x16
+	COM_STMT_EXECUTE        = 0x17
+	COM_STMT_SEND_LONG_DATA = 0x18
+	COM_STMT_CLOSE          = 0x19
+	COM_STMT_RESET          = 0x1a
+	COM_SET_OPTION          = 0x1b
+	COM_STMT_FETCH          = 0x1c
+	COM_DAEMON              = 0x1d
+	COM_BINLOG_DUMP_GTID    = 0x1e
+	COM_RESET_CONNECTION    = 0x1f
 )
 
 // CommandString used for translate cmd to string.
@@ -278,6 +278,9 @@ const (
 	// ER_CON_COUNT_ERROR enum.
 	ER_CON_COUNT_ERROR uint16 = 1040
 
+	// ER_DBACCESS_DENIED_ERROR enum.
+	ER_DBACCESS_DENIED_ERROR = 1044
+
 	// ER_ACCESS_DENIED_ERROR enum.
 	ER_ACCESS_DENIED_ERROR = 1045
 
@@ -286,6 +289,9 @@ const (
 
 	// ER_BAD_DB_ERROR enum.
 	ER_BAD_DB_ERROR = 1049
+
+	// ER_KILL_DENIED_ERROR enum
+	ER_KILL_DENIED_ERROR = 1095
 
 	// ER_UNKNOWN_ERROR enum.
 	ER_UNKNOWN_ERROR = 1105
@@ -326,15 +332,17 @@ const (
 // SQLErrors is the list of sql errors.
 var SQLErrors = map[uint16]*SQLError{
 	ER_CON_COUNT_ERROR:              &SQLError{Num: ER_CON_COUNT_ERROR, State: "08004", Message: "Too many connections"},
+	ER_DBACCESS_DENIED_ERROR:        &SQLError{Num: ER_DBACCESS_DENIED_ERROR, State: "42000", Message: "Access denied for user '%-.48s'@'%' to database '%-.48s'"},
 	ER_ACCESS_DENIED_ERROR:          &SQLError{Num: ER_ACCESS_DENIED_ERROR, State: "28000", Message: "Access denied for user '%-.48s'@'%-.64s' (using password: %s)"},
 	ER_NO_DB_ERROR:                  &SQLError{Num: ER_NO_DB_ERROR, State: "3D000", Message: "No database selected"},
 	ER_BAD_DB_ERROR:                 &SQLError{Num: ER_BAD_DB_ERROR, State: "42000", Message: "Unknown database '%-.192s'"},
+	ER_KILL_DENIED_ERROR:            &SQLError{Num: ER_KILL_DENIED_ERROR, State: "HY000", Message: "You are not owner of thread '%-.192s'"},
 	ER_UNKNOWN_ERROR:                &SQLError{Num: ER_UNKNOWN_ERROR, State: "HY000", Message: "%v"},
 	ER_HOST_NOT_PRIVILEGED:          &SQLError{Num: ER_HOST_NOT_PRIVILEGED, State: "HY000", Message: "Host '%-.64s' is not allowed to connect to this MySQL server"},
 	ER_NO_SUCH_TABLE:                &SQLError{Num: ER_NO_SUCH_TABLE, State: "42S02", Message: "Table '%s' doesn't exist"},
 	ER_SYNTAX_ERROR:                 &SQLError{Num: ER_SYNTAX_ERROR, State: "42000", Message: "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use, %s"},
 	ER_SPECIFIC_ACCESS_DENIED_ERROR: &SQLError{Num: ER_SPECIFIC_ACCESS_DENIED_ERROR, State: "42000", Message: "Access denied; you need (at least one of) the %-.128s privilege(s) for this operation"},
 	ER_OPTION_PREVENTS_STATEMENT:    &SQLError{Num: ER_OPTION_PREVENTS_STATEMENT, State: "42000", Message: "The MySQL server is running with the %s option so it cannot execute this statement"},
-	ER_MALFORMED_PACKET:             &SQLError{Num: ER_MALFORMED_PACKET, State: "HY000", Message: "Malformed communication packet."},
+	ER_MALFORMED_PACKET:             &SQLError{Num: ER_MALFORMED_PACKET, State: "HY000", Message: "Malformed communication packet, err: %v"},
 	CR_SERVER_LOST:                  &SQLError{Num: CR_SERVER_LOST, State: "HY000", Message: ""},
 }

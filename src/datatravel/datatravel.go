@@ -26,7 +26,7 @@ var (
 	setGlobalReadLock  = flag.Bool("set-global-read-lock", true, "Add a read lock when src MySQL data is going done")
 	metaDir            = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
 	fkCheck            = flag.Bool("fk-check", true, "FOREIGN_KEY_CHECK ture or false to travel data")
-	maxAllowedPacketMB = flag.Int("max-allowd-packet-MB", 16, "Set to change the default max_allowed_packet size")
+	maxAllowedPacketMB = flag.Int("max-allowed-packet-MB", 16, "Set to change the default max_allowed_packet size")
 
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
@@ -40,19 +40,17 @@ var (
 	toDatabase = flag.String("to-database", "", "Destination database")
 	toTable    = flag.String("to-table", "", "Destination table")
 
-	cleanup   = flag.Bool("cleanup", true, "Cleanup the from table after shifted(defaults true)")
 	checksum  = flag.Bool("checksum", true, "Checksum the from table and to table after shifted(defaults true)")
 	mysqlDump = flag.String("mysqldump", "mysqldump", "mysqldump path")
 	threads   = flag.Int("threads", 16, "shift threads num(defaults 16)")
 	behinds   = flag.Int("behinds", 2048, "seconds behinds num(default 2048)")
-	radonURL  = flag.String("radonurl", "http://127.0.0.1:8080", "Radon RESTful api(defaults http://127.0.0.1:8080)")
 
 	debug = flag.Bool("debug", false, "Set log to debug mode(defaults false)")
 )
 
 func check(log *xlog.Log) {
 	if *toFlavor == "" || *from == "" || *fromUser == "" || *to == "" || *toUser == "" {
-		log.Panic("usage: datatravel --to-flavor=[radondb/mariadb/mysql] --from=[host:port] --from-password=[password] --to=[host:port] --to-user=[user] --to-password=[password] --cleanup=[false|true]")
+		log.Panic("usage: datatravel --to-flavor=[radondb/mariadb/mysql] --from=[host:port] --from-password=[password] --to=[host:port] --to-user=[user] --to-password=[password]")
 	}
 }
 
@@ -91,11 +89,9 @@ func main() {
 		ToPassword:         *toPassword,
 		ToDatabase:         *toDatabase,
 		ToTable:            *toTable,
-		Cleanup:            *cleanup,
 		MySQLDump:          *mysqlDump,
 		Threads:            *threads,
 		Behinds:            *behinds,
-		RadonURL:           *radonURL,
 		Checksum:           *checksum,
 	}
 	cfg.DBTablesMaps = make(map[string][]string)

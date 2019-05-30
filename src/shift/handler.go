@@ -109,6 +109,7 @@ func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query) {
 					if query.skipError {
 						log.Error("shift.execute.sql[%s].error:%+v", sql, err)
 					} else {
+						log.Error("shift.execute.sql[%s].error:%+v", sql, err)
 						shift.panicMe("shift.execute.sql[%s].error:%+v", sql, err)
 					}
 				}
