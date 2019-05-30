@@ -10,102 +10,104 @@ package shift
 
 import (
 	"config"
-	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 	"xlog"
-
-	"github.com/ant0ine/go-json-rest/rest"
 )
 
 var (
-	restfulPort = 8181
 
 	// Config for normal shift.
 	mockCfg = &config.Config{
-		From:         "127.0.0.1:3306",
-		FromUser:     "root",
-		FromDatabase: "shift_test_from",
-		FromTable:    "t1",
-
-		To:         "127.0.0.1:3306",
-		ToUser:     "root",
-		ToDatabase: "shift_test_to",
-		ToTable:    "t1",
-
-		Cleanup:   true,
-		Threads:   16,
-		Behinds:   256,
-		MySQLDump: "mysqldump",
-		RadonURL:  fmt.Sprintf("http://127.0.0.1:%d", restfulPort),
-		Checksum:  true,
-	}
-
-	// Config for system (mysql) shift.
-	mockCfgMysql = &config.Config{
-		From:         "127.0.0.1:3306",
-		FromUser:     "root",
-		FromDatabase: "mysql",
-		FromTable:    "user",
-
-		To:         "127.0.0.1:3306",
-		ToUser:     "root",
-		ToDatabase: "mysql",
-		ToTable:    "userx",
-
-		Cleanup:   true,
-		Threads:   16,
-		Behinds:   256,
-		MySQLDump: "mysqldump",
-		RadonURL:  fmt.Sprintf("http://127.0.0.1:%d", restfulPort),
-		Checksum:  false,
-	}
-
-	// Config for xa shift.
-	mockCfgXa = &config.Config{
-		From:         "127.0.0.1:3306",
-		FromUser:     "root",
-		FromDatabase: "shift_test_from",
-		FromTable:    "t1",
+		SetGlobalReadLock:  true,
+		MetaDir:            "/tmp",
+		FkCheck:            false,
+		MaxAllowedPacketMB: 16,
+		From:               "127.0.0.1:3306",
+		FromUser:           "root",
+		FromDatabase:       "shift_test_from",
+		FromTable:          "t1",
 
 		To:         "127.0.0.1:3307",
 		ToUser:     "root",
 		ToDatabase: "shift_test_to",
 		ToTable:    "t1",
 
-		Cleanup:   true,
 		Threads:   16,
 		Behinds:   256,
 		MySQLDump: "mysqldump",
-		RadonURL:  fmt.Sprintf("http://127.0.0.1:%d", restfulPort),
+		Checksum:  true,
+	}
+
+	// Config for system (mysql) shift.
+	mockCfgMysql = &config.Config{
+		SetGlobalReadLock:  true,
+		MetaDir:            "/tmp",
+		FkCheck:            false,
+		MaxAllowedPacketMB: 16,
+		From:               "127.0.0.1:3306",
+		FromUser:           "root",
+		FromDatabase:       "mysql",
+		FromTable:          "user",
+
+		To:         "127.0.0.1:3307",
+		ToUser:     "root",
+		ToDatabase: "mysql",
+		ToTable:    "userx",
+
+		Threads:   16,
+		Behinds:   256,
+		MySQLDump: "mysqldump",
+		Checksum:  false,
+	}
+
+	// Config for xa shift.
+	mockCfgXa = &config.Config{
+		SetGlobalReadLock:  true,
+		MetaDir:            "/tmp",
+		FkCheck:            false,
+		MaxAllowedPacketMB: 16,
+		From:               "127.0.0.1:3306",
+		FromUser:           "root",
+		FromDatabase:       "shift_test_from",
+		FromTable:          "t1",
+
+		To:         "127.0.0.1:3307",
+		ToUser:     "root",
+		ToDatabase: "shift_test_to",
+		ToTable:    "t1",
+
+		Threads:   16,
+		Behinds:   256,
+		MySQLDump: "mysqldump",
 		Checksum:  true,
 	}
 
 	// Config for ddl shift.
 	mockCfgDDL = &config.Config{
-		From:         "127.0.0.1:3306",
-		FromUser:     "root",
-		FromDatabase: "shift_test_from",
-		FromTable:    "t1",
+		SetGlobalReadLock:  true,
+		MetaDir:            "/tmp",
+		FkCheck:            false,
+		MaxAllowedPacketMB: 16,
+		From:               "127.0.0.1:3306",
+		FromUser:           "root",
+		FromDatabase:       "shift_test_from",
+		FromTable:          "t1",
 
-		To:         "127.0.0.1:3306",
+		To:         "127.0.0.1:3307",
 		ToUser:     "root",
 		ToDatabase: "shift_test_to",
 		ToTable:    "t1",
 
-		Cleanup:   true,
 		Threads:   16,
 		Behinds:   256,
 		MySQLDump: "mysqldump",
-		RadonURL:  fmt.Sprintf("http://127.0.0.1:%d", restfulPort),
 		Checksum:  false,
 	}
 )
 
-func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, readonlyHanler mockHandler, shardshiftHandler mockHandler, throttleHandler mockHandler) (*Shift, func()) {
-	h := mockHttp(log, restfulPort, readonlyHanler, shardshiftHandler, throttleHandler)
+func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool) (*Shift, func()) {
 	shift := NewShift(log, cfg)
 
 	// Prepare connections.
@@ -122,18 +124,18 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, rea
 		toConn := shift.toPool.Get()
 		defer shift.toPool.Put(toConn)
 
-		// Cleanup To table first.
-		{
-			sql := fmt.Sprintf("drop table if exists `%s`.`%s`", cfg.ToDatabase, cfg.ToTable)
-			if _, err := toConn.Execute(sql); err != nil {
-				log.Panicf("mock.shift.prepare.table.error:%+v", err)
-			}
-		}
-
 		if _, isSystem := sysDatabases[strings.ToLower(cfg.FromDatabase)]; !isSystem {
-			// Cleanup To table first.
+			// Cleanup To database first, datatravel shift FromDatabase to To.
 			{
-				sql := fmt.Sprintf("drop table if exists `%s`.`%s`", cfg.FromDatabase, cfg.FromTable)
+				sql := fmt.Sprintf("drop database if exists `%s`", cfg.FromDatabase)
+				if _, err := toConn.Execute(sql); err != nil {
+					log.Panicf("mock.shift.prepare.table.error:%+v", err)
+				}
+			}
+
+			// Cleanup From database.
+			{
+				sql := fmt.Sprintf("drop database if exists `%s`", cfg.FromDatabase)
 				if _, err := fromConn.Execute(sql); err != nil {
 					log.Panicf("mock.shift.prepare.database.error:%+v", err)
 				}
@@ -151,6 +153,7 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, rea
 			} else {
 				sql = fmt.Sprintf("create table `%s`.`%s`(a int, b int, c varchar(200), d DOUBLE NULL DEFAULT NULL, e json DEFAULT NULL, f INT UNSIGNED DEFAULT NULL, g BIGINT DEFAULT NULL, h BIGINT UNSIGNED DEFAULT NULL, i TINYINT NULL, j TINYINT UNSIGNED DEFAULT NULL, k SMALLINT DEFAULT NULL, l SMALLINT UNSIGNED DEFAULT NULL, m MEDIUMINT DEFAULT NULL, n INT UNSIGNED DEFAULT NULL)", cfg.FromDatabase, cfg.FromTable)
 			}
+
 			if _, err := fromConn.Execute(sql); err != nil {
 				log.Panicf("mock.shift.prepare.database.error:%+v", err)
 			}
@@ -164,6 +167,13 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, rea
 				}
 			}
 		} else {
+			// Cleanup To table first
+			{
+				sql := fmt.Sprintf("drop table if exists `%s`.`%s`", cfg.FromDatabase, cfg.ToTable)
+				if _, err := toConn.Execute(sql); err != nil {
+					log.Panicf("mock.shift.prepare.table.error:%+v", err)
+				}
+			}
 			// Prepare mysql.userx(fakes for mysql.user) table on TO.
 			sql := fmt.Sprintf("show create table `%s`.`%s`", cfg.FromDatabase, cfg.FromTable)
 			r, err := fromConn.Execute(sql)
@@ -209,133 +219,102 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool, rea
 		}
 	}
 	return shift, func() {
+		// Unlock global read lock tables
+		shift.unLockTables()
+
+		// Cleanup shift_test_from before end
+		toConn := shift.toPool.Get()
+		defer shift.toPool.Put(toConn)
+		{
+			sql := fmt.Sprintf("drop database if exists `%s`", mockCfg.FromDatabase)
+			if _, err := toConn.Execute(sql); err != nil {
+				log.Panicf("mock.shift.prepare.table.error:%+v", err)
+			}
+		}
 		shift.Close()
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		h.Shutdown(ctx)
 		time.Sleep(time.Millisecond * 100)
 	}
 }
 
-func MockShift(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfg, hasPK, false, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShift(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfg.ToFlavor = flavor
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
+	return mockShift(log, mockCfg, hasPK, false)
 }
 
-func MockShiftWithCleanup(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	mockCfg.Cleanup = true
-	return mockShift(log, mockCfg, hasPK, false, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShiftWithCleanup(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfg.ToFlavor = flavor
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
+	return mockShift(log, mockCfg, hasPK, false)
 }
 
-func MockShiftWithData(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfg, hasPK, true, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShiftWithData(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfg.ToFlavor = flavor
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
+	return mockShift(log, mockCfg, hasPK, true)
 }
 
-func MockShiftXa(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfgXa, hasPK, false, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShiftXa(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfgXa.ToFlavor = flavor
+	mockCfgXa.DBTablesMaps = make(map[string][]string) // init map
+	mockCfgXa.Databases = make([]string, 0, 0)         // init dbs
+	mockCfgXa.FromRows = 0
+	mockCfgXa.ToRows = 0
+	return mockShift(log, mockCfgXa, hasPK, false)
 }
 
-func MockShiftDDL(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfgDDL, hasPK, false, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShiftDDL(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfgDDL.ToFlavor = flavor
+	mockCfgDDL.DBTablesMaps = make(map[string][]string) // init map
+	mockCfgDDL.Databases = make([]string, 0, 0)         // init dbs
+	mockCfgDDL.FromRows = 0
+	mockCfgDDL.ToRows = 0
+	return mockShift(log, mockCfgDDL, hasPK, false)
 }
 
-func MockShiftMysqlTable(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfgMysql, hasPK, false, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShiftMysqlTable(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfgMysql.ToFlavor = flavor
+	mockCfgMysql.DBTablesMaps = make(map[string][]string) // init map
+	mockCfgMysql.Databases = make([]string, 0, 0)         // init dbs
+	mockCfgMysql.FromRows = 0
+	mockCfgMysql.ToRows = 0
+	return mockShift(log, mockCfgMysql, hasPK, false)
 }
 
-func MockShiftMysqlTableWithData(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfgMysql, hasPK, true, mockRadonReadonly, mockRadonShift, mockRadonThrottle)
+func MockShiftMysqlTableWithData(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfgMysql.ToFlavor = flavor
+	mockCfgMysql.DBTablesMaps = make(map[string][]string) // init map
+	mockCfgMysql.Databases = make([]string, 0, 0)         // init dbs
+	mockCfgMysql.FromRows = 0
+	mockCfgMysql.ToRows = 0
+	return mockShift(log, mockCfgMysql, hasPK, true)
 }
 
-func MockShiftWithRadonReadonlyError(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfg, false, false, mockRadonReadonlyError, mockRadonShift, mockRadonThrottle)
+func MockShiftWithRadonReadonlyError(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfg.ToFlavor = flavor
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
+	return mockShift(log, mockCfg, false, false)
 }
 
-func MockShiftWithRadonShardRuleError(log *xlog.Log, hasPK bool) (*Shift, func()) {
-	return mockShift(log, mockCfg, false, false, mockRadonReadonly, mockRadonShiftError, mockRadonThrottle)
-}
-
-// RESTful api.
-type mockHandler func(log *xlog.Log) rest.HandlerFunc
-
-func mockHttp(log *xlog.Log, port int, readonly mockHandler, shardshift mockHandler, throttle mockHandler) *http.Server {
-	httpAddr := fmt.Sprintf(":%d", port)
-	api := rest.NewApi()
-	api.Use(rest.DefaultDevStack...)
-
-	router, err := rest.MakeRouter(
-		rest.Put("/v1/radon/readonly", readonly(log)),
-		rest.Put("/v1/radon/throttle", throttle(log)),
-		rest.Post("/v1/shard/shift", shardshift(log)),
-	)
-	if err != nil {
-		log.Panicf("mock.shift.rest.make.router.error:%+v", err)
-	}
-	api.SetApp(router)
-	handlers := api.MakeHandler()
-	h := &http.Server{Addr: httpAddr, Handler: handlers}
-	go func() {
-		if err := h.ListenAndServe(); err != nil {
-			log.Error("mock.shift.rest.error:%+v", err)
-			return
-		}
-	}()
-	time.Sleep(time.Millisecond * 100)
-	return h
-}
-
-var readonlyLast bool
-
-type readonlyParams struct {
-	ReadOnly bool `json:"readonly"`
-}
-
-func mockRadonReadonly(log *xlog.Log) rest.HandlerFunc {
-	f := func(w rest.ResponseWriter, r *rest.Request) {
-		p := readonlyParams{}
-		r.DecodeJsonPayload(&p)
-		readonlyLast = p.ReadOnly
-		log.Info("mock.api.radon.readonly.call.req:%+v", p)
-	}
-	return f
-}
-
-var throttleLast int
-
-type throttleParams struct {
-	Limits int `json:"limits"`
-}
-
-func mockRadonThrottle(log *xlog.Log) rest.HandlerFunc {
-	f := func(w rest.ResponseWriter, r *rest.Request) {
-		p := throttleParams{}
-		r.DecodeJsonPayload(&p)
-		throttleLast = p.Limits
-		log.Info("mock.api.radon.throttle.call.req:%+v", p)
-	}
-	return f
-}
-
-func mockRadonShift(log *xlog.Log) rest.HandlerFunc {
-	f := func(w rest.ResponseWriter, r *rest.Request) {
-		log.Info("mock.api.radon.rule.call")
-	}
-	return f
-}
-
-func mockRadonReadonlyError(log *xlog.Log) rest.HandlerFunc {
-	f := func(w rest.ResponseWriter, r *rest.Request) {
-		log.Info("mock.api.readonly.error.call")
-		readonlyLast = false
-		rest.Error(w, "mock.api.readonly.error", http.StatusInternalServerError)
-	}
-	return f
-}
-
-func mockRadonShiftError(log *xlog.Log) rest.HandlerFunc {
-	f := func(w rest.ResponseWriter, r *rest.Request) {
-		log.Info("mock.api.shift.error.call")
-		rest.Error(w, "mock.api.shift.error", http.StatusInternalServerError)
-	}
-	return f
+func MockShiftWithRadonShardRuleError(log *xlog.Log, hasPK bool, flavor string) (*Shift, func()) {
+	mockCfg.ToFlavor = flavor
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
+	return mockShift(log, mockCfg, false, false)
 }
 
 func mockPanicMe(log *xlog.Log, format string, v ...interface{}) {

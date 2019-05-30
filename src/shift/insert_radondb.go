@@ -17,7 +17,7 @@ import (
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
 	"github.com/siddontang/go-mysql/schema"
-	"github.com/xelabs/go-mysqlstack/common"
+	"github.com/xelabs/go-mysqlstack/sqlparser/depends/common"
 )
 
 func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
@@ -52,7 +52,7 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 					case e.Table.Columns[idx].Type == schema.TYPE_BIT:
 						// Here no need to add prefix "0x" for hexstr
 						hexstr := fmt.Sprintf("%x", v)
-						log.Debug("bit hexstr:", hexstr)
+						log.Debug("bit hexstr:%+v", hexstr)
 						if num64, err := strconv.ParseUint(hexstr, 16, 64); err != nil {
 							panic(err)
 						} else {
@@ -68,7 +68,7 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 							// Here we should add prefix "0x" for hex
 							values = append(values, fmt.Sprintf("0x%x", v))
 						default:
-							log.Debug("insert table type and raw type:", e.Table.Name, e.Table.Columns[idx].Type, e.Table.Columns[idx].RawType)
+							log.Debug("insert table[%+v] type[%+v] and raw type[%+v]:", e.Table.Name, e.Table.Columns[idx].Type, e.Table.Columns[idx].RawType)
 							values = append(values, fmt.Sprintf("%#v", v))
 						}
 					}

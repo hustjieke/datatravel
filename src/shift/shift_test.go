@@ -17,11 +17,8 @@ import (
 )
 
 func assertChecksumEqual(t *testing.T, shift *Shift) {
-	// check checksum.
-	<-shift.Done()
-
-	assert.Equal(t, false, readonlyLast)
-	assert.Equal(t, 0, throttleLast)
+	// if checksum ok, we`ll get true(done) finally.
+	assert.True(t, <-shift.Done())
 }
 
 func assertChecksumNotEqual(t *testing.T, shift *Shift) {
@@ -47,7 +44,7 @@ func assertChecksumNotEqual(t *testing.T, shift *Shift) {
 
 func TestShiftInsert(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, true)
+	shift, cleanup := MockShift(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -83,13 +80,14 @@ func TestShiftInsert(t *testing.T) {
 	// Checksum check.
 	{
 		assertChecksumEqual(t, shift)
+		log.Debug("checksum done, do cleanup")
 	}
 }
 
 /*
 func TestShiftInsertJson(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, true)
+	shift, cleanup := MockShift(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -118,7 +116,7 @@ func TestShiftInsertJson(t *testing.T) {
 
 func TestShiftDelete(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, true)
+	shift, cleanup := MockShift(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -168,7 +166,7 @@ func TestShiftDelete(t *testing.T) {
 
 func TestShiftDeleteWithoutPK(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, false)
+	shift, cleanup := MockShift(log, false, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -218,7 +216,7 @@ func TestShiftDeleteWithoutPK(t *testing.T) {
 
 func TestShiftUpdate(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, true)
+	shift, cleanup := MockShift(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -268,7 +266,7 @@ func TestShiftUpdate(t *testing.T) {
 
 func TestShiftUpdateWithoutPK(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, false)
+	shift, cleanup := MockShift(log, false, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -318,7 +316,7 @@ func TestShiftUpdateWithoutPK(t *testing.T) {
 
 func TestShiftReplace(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, true)
+	shift, cleanup := MockShift(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -356,7 +354,7 @@ func TestShiftReplace(t *testing.T) {
 
 func TestShiftIntegerUnsigned(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, false)
+	shift, cleanup := MockShift(log, false, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -395,7 +393,7 @@ func TestShiftIntegerUnsigned(t *testing.T) {
 
 func TestShiftXACommit(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftXa(log, true)
+	shift, cleanup := MockShiftXa(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -503,7 +501,7 @@ func TestShiftXACommit(t *testing.T) {
 
 func TestShiftXARollback(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftXa(log, true)
+	shift, cleanup := MockShiftXa(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -624,7 +622,7 @@ func TestShiftXARollback(t *testing.T) {
 
 func TestShiftInsertWithDump(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftWithData(log, true)
+	shift, cleanup := MockShiftWithData(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -665,7 +663,7 @@ func TestShiftInsertWithDump(t *testing.T) {
 
 func TestShiftChecksumTable(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, false)
+	shift, cleanup := MockShift(log, false, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -705,7 +703,7 @@ func TestShiftChecksumTable(t *testing.T) {
 
 func TestShiftMySQLTable(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftMysqlTable(log, false)
+	shift, cleanup := MockShiftMysqlTable(log, false, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -727,7 +725,7 @@ func TestShiftMySQLTable(t *testing.T) {
 
 func TestShiftMySQLTableWithDatas(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftMysqlTableWithData(log, false)
+	shift, cleanup := MockShiftMysqlTableWithData(log, false, "mysql")
 	defer cleanup()
 
 	// Checksum check.
@@ -738,7 +736,7 @@ func TestShiftMySQLTableWithDatas(t *testing.T) {
 
 func TestShiftWithCleanup(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftWithCleanup(log, true)
+	shift, cleanup := MockShiftWithCleanup(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockPanicMe
 
@@ -777,9 +775,10 @@ func TestShiftWithCleanup(t *testing.T) {
 	}
 }
 
+/*
 func TestShiftDDLEvent(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftDDL(log, true)
+	shift, cleanup := MockShiftDDL(log, true, "mysql")
 	defer cleanup()
 	shift.panicHandler = mockRecoverPanicMe
 	fromConn := shift.fromPool.Get()
@@ -801,53 +800,53 @@ func TestShiftDDLEvent(t *testing.T) {
 	{
 		sql := fmt.Sprintf("create database %s_shift_test", shift.cfg.FromDatabase)
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Drop database event.
 	{
 		sql := fmt.Sprintf("drop database %s_shift_test", shift.cfg.FromDatabase)
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Truncate db.table event.
 	{
 		sql := fmt.Sprintf("truncate table %s.%s", shift.cfg.FromDatabase, shift.cfg.FromTable)
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Alter db.table event.
 	{
 		sql := fmt.Sprintf("alter table %s.%s add xxx int", shift.cfg.FromDatabase, shift.cfg.FromTable)
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Alter table event.
 	{
 		sql := fmt.Sprintf("use %s", shift.cfg.FromDatabase)
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 
 		sql = fmt.Sprintf("alter table %s engine=MyISAM", shift.cfg.FromTable)
 		_, err = fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Create table xx event.
 	{
 		sql := fmt.Sprintf("create table if not exists xx(a int)")
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Drop table xx event.
 	{
 		sql := fmt.Sprintf("drop table xx")
 		_, err := fromConn.Execute(sql)
-		assert.Nil(t, err)
+		assert.NotNil(t, err)
 	}
 
 	// Checksum check.
@@ -855,82 +854,18 @@ func TestShiftDDLEvent(t *testing.T) {
 		assertChecksumNotEqual(t, shift)
 	}
 }
-
-func TestShiftWithRadonReadonlyError(t *testing.T) {
-	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftWithRadonReadonlyError(log, true)
-	defer cleanup()
-	shift.panicHandler = mockRecoverPanicMe
-
-	step := 7
-	begin := 0
-	// Inserts.
-	{
-		fromConn := shift.fromPool.Get()
-		defer shift.fromPool.Put(fromConn)
-
-		for i := begin; i < begin+step; i++ {
-			sql := fmt.Sprintf("insert into `%s`.`%s`(a,b,c) values(%d,%d,'%d')", shift.cfg.FromDatabase, shift.cfg.FromTable, i, i, i)
-			_, err := fromConn.Execute(sql)
-			assert.Nil(t, err)
-		}
-	}
-}
-
-func TestShiftWithRadonShardShiftError(t *testing.T) {
-	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShiftWithRadonShardRuleError(log, true)
-	defer cleanup()
-	shift.panicHandler = mockRecoverPanicMe
-
-	step := 7
-	begin := 0
-	// Inserts.
-	{
-		fromConn := shift.fromPool.Get()
-		defer shift.fromPool.Put(fromConn)
-
-		for i := begin; i < begin+step; i++ {
-			sql := fmt.Sprintf("insert into `%s`.`%s`(a,b,c) values(%d,%d,'%d')", shift.cfg.FromDatabase, shift.cfg.FromTable, i, i, i)
-			_, err := fromConn.Execute(sql)
-			assert.Nil(t, err)
-		}
-	}
-}
+*/
 
 func TestShiftStart(t *testing.T) {
 	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
+	mockCfg.ToFlavor = "mysql"
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
 	shift := NewShift(log, mockCfg)
 	defer shift.Close()
 
 	err := shift.Start()
 	assert.Nil(t, err)
-}
-
-func TestShiftRadonThrottle(t *testing.T) {
-	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
-	shift, cleanup := MockShift(log, true)
-	defer cleanup()
-	shift.cfg.Behinds = 0
-
-	step := 100
-	begin := 0
-
-	// MultiInserts.
-	{
-		fromConn := shift.fromPool.Get()
-		defer shift.fromPool.Put(fromConn)
-
-		for i := begin; i < begin+step; i += 2 {
-			sql := fmt.Sprintf("insert into `%s`.`%s`(a,b,c) values(%d,%d,'%d'),(%d,%d,'%d')", shift.cfg.FromDatabase, shift.cfg.FromTable, i, i, i, i+1, i+1, i+1)
-			_, err := fromConn.Execute(sql)
-			assert.Nil(t, err)
-		}
-		log.Debug("test.shift.multi.insert.done")
-	}
-
-	// Checksum check.
-	{
-		assertChecksumEqual(t, shift)
-	}
 }

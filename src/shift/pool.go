@@ -53,12 +53,13 @@ func NewPool(log *xlog.Log, cap int, host string, user string, password string, 
 func (p *Pool) Get() *client.Conn {
 	log := p.log
 	var err error
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	conns := p.getConns()
-	if conns == nil {
+	if p.conns == nil {
 		return nil
 	}
-	conn := <-conns
+	conn := <-p.conns
 
 	if err = conn.Ping(); err != nil {
 		log.Warning("shift.get.connection.was.bad, prepare.a.new.connection")
@@ -72,11 +73,12 @@ func (p *Pool) Get() *client.Conn {
 }
 
 func (p *Pool) Put(conn *client.Conn) {
-	conns := p.getConns()
-	if conns == nil {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.conns == nil {
 		return
 	}
-	conns <- conn
+	p.conns <- conn
 }
 
 func (p *Pool) Close() {
@@ -88,10 +90,4 @@ func (p *Pool) Close() {
 		conn.Close()
 	}
 	p.conns = nil
-}
-
-func (p *Pool) getConns() chan *client.Conn {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.conns
 }
