@@ -39,6 +39,8 @@ type Shift struct {
 	wg sync.WaitGroup
 	// used for set flush tables with read lock and unlock tables;
 	readLockConn *client.Conn
+	// true: datatravel running normal; false: get some exception
+	canalStatus bool
 }
 
 func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
@@ -49,7 +51,16 @@ func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
 		done:          make(chan bool),
 		behindsTicker: time.NewTicker(time.Duration(5000) * time.Millisecond),
 		panicHandler:  logPanicHandler,
+		canalStatus:   true,
 	}
+}
+
+func (shift *Shift) CheckCanalStatus() bool {
+	return shift.canalStatus
+}
+
+func (shift *Shift) SetCanalStatus(b bool) {
+	shift.canalStatus = b
 }
 
 func (shift *Shift) prepareConnection() error {
@@ -82,10 +93,16 @@ func (shift *Shift) prepareTable() error {
 	// From connection.
 	fromConn := shift.fromPool.Get()
 	defer shift.fromPool.Put(fromConn)
+	if fromConn == nil {
+		shift.panicMe("shift.get.from.conn.nil.error")
+	}
 
 	// To connection.
 	toConn := shift.toPool.Get()
 	defer shift.toPool.Put(toConn)
+	if toConn == nil {
+		shift.panicMe("shift.get.to.conn.nil.error")
+	}
 
 	// Get databases
 	log.Info("shift.get.database...")
@@ -331,6 +348,7 @@ func (shift *Shift) prepareCanal() error {
 	go func() {
 		if err := canal.Run(); err != nil {
 			log.Error("shift.canal.run.error:%+v", err)
+			shift.SetCanalStatus(false)
 		}
 	}()
 	log.Info("shift.prepare.canal.done...")
@@ -361,9 +379,15 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 
 	fromConn := shift.fromPool.Get()
 	defer shift.fromPool.Put(fromConn)
+	if fromConn == nil {
+		shift.panicMe("shift.get.from.conn.nil.error")
+	}
 
 	toConn := shift.toPool.Get()
 	defer shift.toPool.Put(toConn)
+	if toConn == nil {
+		shift.panicMe("shift.get.to.conn.nil.error")
+	}
 
 	for _, tbl := range tbls {
 		checksumFunc := func(t string, Conn *client.Conn, Database string, Table string, c chan uint64) {
@@ -484,6 +508,10 @@ func (shift *Shift) dumpProgress() error {
 			// Calculate progress rate
 			// If data is not so large, it may be happened that per > 100
 			// as the result of "show table status" is estimate in MySQL
+			if cfg.FromRows == 0 {
+				cfg.FromRows = 1
+			}
+			log.Info("cfg.FromRows before cal:%+v", cfg.FromRows)
 			per := uint((float64(cfg.ToRows) / float64(cfg.FromRows)) * 100)
 			if per > 100 {
 				per = 100
@@ -526,6 +554,9 @@ func (shift *Shift) masterPosition() *mysql.Position {
 
 	fromConn := shift.fromPool.Get()
 	defer shift.fromPool.Put(fromConn)
+	if fromConn == nil {
+		shift.panicMe("shift.get.from.conn.nil.error")
+	}
 
 	sql := "show master status"
 	r, err := fromConn.Execute(sql)
@@ -556,6 +587,7 @@ func (shift *Shift) behindsCheckStart() error {
 	go func(s *Shift) {
 		log := s.log
 		log.Info("shift.dumping...")
+		// If some error happened during dumping, wait dump will be still set dump done.
 		<-s.canal.WaitDumpDone()
 		// Wait dump worker done.
 		log.Info("shift.wait.dumper.background.worker.again...")
@@ -567,29 +599,34 @@ func (shift *Shift) behindsCheckStart() error {
 		}
 
 		for range s.behindsTicker.C {
-			// Get master and sync gtid
-			if s.canal.SyncedGTIDSet() != nil {
-				syncGtid := s.canal.SyncedGTIDSet().(*mysql.MysqlGTIDSet)
-				progress.SynGTID = syncGtid.String()
-			}
-			if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
-				log.Panic("error:%+v", err)
-			} else {
-				progress.MasterGTID = masterGtid.String()
-			}
+			// If canal get something wrong during dumping or syncing data, we should log error
+			if s.CheckCanalStatus() {
+				// Get master and sync gtid
+				if s.canal.SyncedGTIDSet() != nil {
+					syncGtid := s.canal.SyncedGTIDSet().(*mysql.MysqlGTIDSet)
+					progress.SynGTID = syncGtid.String()
+				}
+				if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
+					log.Panic("error:%+v", err)
+				} else {
+					progress.MasterGTID = masterGtid.String()
+				}
 
-			masterPos := s.masterPosition()
-			syncPos := s.canal.SyncedPosition()
-			behinds := int(masterPos.Pos - syncPos.Pos)
-			progress.PositionBehinds = fmt.Sprintf("%v", behinds)
-			config.UpdateTravelProgress(progress, s.cfg.MetaDir)
-			log.Info("travel.progress%+v", progress)
-			if behinds <= shift.cfg.Behinds {
-				shift.checkAndSetReadlock()
-				progress.PositionBehinds = "0"
+				masterPos := s.masterPosition()
+				syncPos := s.canal.SyncedPosition()
+				behinds := int(masterPos.Pos - syncPos.Pos)
+				progress.PositionBehinds = fmt.Sprintf("%v", behinds)
 				config.UpdateTravelProgress(progress, s.cfg.MetaDir)
 				log.Info("travel.progress%+v", progress)
-				return
+				if behinds <= shift.cfg.Behinds {
+					shift.checkAndSetReadlock()
+					progress.PositionBehinds = "0"
+					config.UpdateTravelProgress(progress, s.cfg.MetaDir)
+					log.Info("travel.progress%+v", progress)
+					return
+				}
+			} else {
+				log.Error("shift.canal.get.error.during.dump.or.sync")
 			}
 		}
 	}(shift)
@@ -711,7 +748,9 @@ func (shift *Shift) checkAndSetReadlock() {
 func (shift *Shift) setGlobalReadLock() {
 	sql1 := "FLUSH TABLES"
 	sql2 := "FLUSH TABLES WITH READ LOCK"
-	shift.readLockConn = shift.fromPool.Get()
+	if shift.readLockConn = shift.fromPool.Get(); shift.readLockConn == nil {
+		shift.panicMe("datatravel.get.conn.nil")
+	}
 
 	if _, err := shift.readLockConn.Execute(sql1); err != nil {
 		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql1, err)
@@ -726,13 +765,16 @@ func (shift *Shift) setGlobalReadLock() {
 // Func unLockTables is used to unlock tables on from.
 // It will be called when travel data failed.
 func (shift *Shift) unLockTables() {
-	sql := "UNLOCK TABLES"
-
+	// if readLockConn is nil, the read lock will be released automatically
 	if shift.readLockConn == nil {
 		return
-	}
-	if _, err := shift.readLockConn.Execute(sql); err != nil {
-		shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql, err)
-		return
+	} else {
+		defer shift.fromPool.Put(shift.readLockConn)
+		sql := "UNLOCK TABLES"
+
+		if _, err := shift.readLockConn.Execute(sql); err != nil {
+			shift.panicMe("datatravel.execute.master[%s].sql[%s].error:%+v", shift.cfg.From, sql, err)
+			return
+		}
 	}
 }

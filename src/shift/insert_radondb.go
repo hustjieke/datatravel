@@ -98,7 +98,9 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 	if h.xaConn != nil {
 		conn = h.xaConn
 	} else {
-		conn = h.shift.toPool.Get()
+		if conn = h.shift.toPool.Get(); conn == nil {
+			h.shift.panicMe("shift.insert.get.to.conn.nil.error")
+		}
 	}
 
 	// if e.DataType == canal.BINLOGDATA {

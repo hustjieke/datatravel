@@ -100,7 +100,6 @@ func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query) {
 	pool := h.shift.toPool
 	cfg := h.shift.cfg
 
-	log.Debug("handler.execute:%v", query)
 	switch query.typ {
 	case QueryType_INSERT, QueryType_DELETE, QueryType_UPDATE:
 		{

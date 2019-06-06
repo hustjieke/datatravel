@@ -17,7 +17,6 @@ import (
 )
 
 func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
-	log := h.log
 	var conn *client.Conn
 
 	h.wg.Add(1)
@@ -79,7 +78,6 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 				typ:       QueryType_UPDATE,
 				skipError: false,
 			}
-			log.Debug("----no:%d, query:%+v", i, query)
 			h.execute(conn, keep, query)
 		}
 	}
@@ -87,7 +85,9 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 	if h.xaConn != nil {
 		conn = h.xaConn
 	} else {
-		conn = h.shift.toPool.Get()
+		if conn = h.shift.toPool.Get(); conn == nil {
+			h.shift.panicMe("shift.update.get.to.conn.nil.error")
+		}
 	}
 
 	executeFunc(conn)
