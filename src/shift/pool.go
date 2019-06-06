@@ -59,7 +59,11 @@ func (p *Pool) Get() *client.Conn {
 	if p.conns == nil {
 		return nil
 	}
+
 	conn := <-p.conns
+	if conn == nil {
+		return nil
+	}
 
 	if err = conn.Ping(); err != nil {
 		log.Warning("shift.get.connection.was.bad, prepare.a.new.connection")
