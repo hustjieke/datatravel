@@ -10,7 +10,9 @@ package shift
 
 import (
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 	"xlog"
 
 	"github.com/stretchr/testify/assert"
@@ -868,4 +870,92 @@ func TestShiftStart(t *testing.T) {
 
 	err := shift.Start()
 	assert.Nil(t, err)
+}
+
+// Fix bug for issue #4
+func TestShiftCanalClose(t *testing.T) {
+	log := xlog.NewStdLog(xlog.Level(xlog.DEBUG))
+	mockCfg.ToFlavor = "mysql"
+	mockCfg.DBTablesMaps = make(map[string][]string) // init map
+	mockCfg.Databases = make([]string, 0, 0)         // init dbs
+	mockCfg.FromRows = 0
+	mockCfg.ToRows = 0
+
+	shift := NewShift(log, mockCfg)
+	// Replace time ticker every 5s to 1s, 5s is to long for us to test
+	shift.behindsTicker = time.NewTicker(time.Duration(1000) * time.Millisecond)
+
+	fromPool, errfrom := NewPool(log, 4, mockCfg.From, mockCfg.FromUser, mockCfg.FromPassword, false)
+	assert.Nil(t, errfrom)
+	toPool, errto := NewPool(log, 4, mockCfg.To, mockCfg.ToUser, mockCfg.ToPassword, false)
+	assert.Nil(t, errto)
+
+	var c = make(chan bool, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	// Keep continuing insert so that canal will be always running and we
+	// have enough time to use shift.Close() to simulate signal like kill
+	go func() {
+		begin := 0
+		step := 5000
+		fromConn := fromPool.Get()
+		defer fromPool.Put(fromConn)
+		toConn := toPool.Get()
+		defer toPool.Put(toConn)
+
+		// Cleanup From table first.
+		sql := fmt.Sprintf("drop table if exists `%s`.`%s`", mockCfg.FromDatabase, mockCfg.FromTable)
+		if _, err := fromConn.Execute(sql); err != nil {
+			log.Panicf("test.drop.from.table.error:%+v", err)
+		}
+
+		// Cleanup To table.
+		sql = fmt.Sprintf("drop table if exists `%s`.`%s`", mockCfg.FromDatabase, mockCfg.FromTable)
+		if _, err := toConn.Execute(sql); err != nil {
+			log.Panicf("test.drop.to.table.error:%+v", err)
+		}
+
+		// Create database on from.
+		sql = fmt.Sprintf("create database if not exists `%s`", mockCfg.FromDatabase)
+		if _, err := fromConn.Execute(sql); err != nil {
+			log.Panicf("test.prepare.database.error:%+v", err)
+		}
+
+		// Create table on from.
+		sql = fmt.Sprintf("create table `%s`.`%s`(a int primary key, b int, c varchar(200), d DOUBLE NULL DEFAULT NULL, e json DEFAULT NULL, f INT UNSIGNED DEFAULT NULL, g BIGINT DEFAULT NULL, h BIGINT UNSIGNED DEFAULT NULL, i TINYINT NULL, j TINYINT UNSIGNED DEFAULT NULL, k SMALLINT DEFAULT NULL, l SMALLINT UNSIGNED DEFAULT NULL, m MEDIUMINT DEFAULT NULL, n INT UNSIGNED DEFAULT NULL)", mockCfg.FromDatabase, mockCfg.FromTable)
+		if _, err := fromConn.Execute(sql); err != nil {
+			log.Panicf("test.prepare.from.table.error:%+v", err)
+		}
+
+		for i := begin; i < begin+step; i++ {
+			select {
+			case <-c:
+				log.Info("test.gets.signal.done.and.insert.nums:%v", i-1)
+				i = 5000
+			default:
+			}
+			sql := fmt.Sprintf("insert into `%s`.`%s`(a,b,c) values(%d,%d,'%d')", mockCfg.FromDatabase, mockCfg.FromTable, i, i, i)
+			_, err := fromConn.Execute(sql)
+			assert.Nil(t, err)
+		}
+		log.Debug("test.shift.insert.done")
+		wg.Done()
+	}()
+
+	// Sleep 1s so that tb1 has some rows before we start canal and dump
+	time.Sleep(time.Second * 1)
+
+	// Start
+	var errstart error
+	errstart = shift.Start()
+	assert.Nil(t, errstart)
+
+	// Sleep 2s to make sure we have enough time that shift.Start() having executed
+	// canal.Run(), then we can use shift.Close() to simulate signal like kill
+	time.Sleep(time.Second * 2)
+	log.Debug("sleep 2s")
+	shift.Close()
+	c <- true
+	wg.Wait()
+	assert.False(t, shift.allDone)
 }

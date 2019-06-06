@@ -121,15 +121,21 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool) (*S
 	{
 		fromConn := shift.fromPool.Get()
 		defer shift.fromPool.Put(fromConn)
+		if fromConn == nil {
+			panic("shift.mock.get.from.conn.nil.error")
+		}
 		toConn := shift.toPool.Get()
 		defer shift.toPool.Put(toConn)
+		if toConn == nil {
+			panic("shift.mock.get.to.conn.nil.error")
+		}
 
 		if _, isSystem := sysDatabases[strings.ToLower(cfg.FromDatabase)]; !isSystem {
 			// Cleanup To database first, datatravel shift FromDatabase to To.
 			{
 				sql := fmt.Sprintf("drop database if exists `%s`", cfg.FromDatabase)
 				if _, err := toConn.Execute(sql); err != nil {
-					log.Panicf("mock.shift.prepare.table.error:%+v", err)
+					log.Panicf("mock.shift.drop.to.table.error:%+v", err)
 				}
 			}
 
@@ -137,7 +143,7 @@ func mockShift(log *xlog.Log, cfg *config.Config, hasPK bool, initData bool) (*S
 			{
 				sql := fmt.Sprintf("drop database if exists `%s`", cfg.FromDatabase)
 				if _, err := fromConn.Execute(sql); err != nil {
-					log.Panicf("mock.shift.prepare.database.error:%+v", err)
+					log.Panicf("mock.shift.drop.from.database.error:%+v", err)
 				}
 			}
 

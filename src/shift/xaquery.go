@@ -17,7 +17,6 @@ import (
 
 // XAQuery execute xa statement (xa start|end|prepare|commit|rollback)
 func (h *EventHandler) XAQuery(e *canal.XAEvent) {
-	log := h.log
 	var XaType QueryType
 	var conn *client.Conn
 
@@ -40,7 +39,6 @@ func (h *EventHandler) XAQuery(e *canal.XAEvent) {
 		typ:       XaType,
 		skipError: false,
 	}
-	log.Debug("----xa query, query:%+v", query)
 
 	if h.xaConn != nil {
 		conn = h.xaConn

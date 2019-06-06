@@ -18,7 +18,6 @@ import (
 
 func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 	var conn *client.Conn
-	log := h.log
 
 	h.wg.Add(1)
 	executeFunc := func(conn *client.Conn) {
@@ -62,7 +61,6 @@ func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 				typ:       QueryType_DELETE,
 				skipError: false,
 			}
-			log.Debug("----no:%d, query:%+v", i, query)
 			h.execute(conn, keep, query)
 		}
 	}
@@ -70,7 +68,9 @@ func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 	if h.xaConn != nil {
 		conn = h.xaConn
 	} else {
-		conn = h.shift.toPool.Get()
+		if conn = h.shift.toPool.Get(); conn == nil {
+			h.shift.panicMe("shift.delete.get.to.conn.nil.error")
+		}
 	}
 
 	executeFunc(conn)

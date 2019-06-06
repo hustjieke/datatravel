@@ -19,7 +19,6 @@ import (
 
 func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 	var conn *client.Conn
-	log := h.log
 	h.wg.Add(1)
 
 	executeFunc := func(conn *client.Conn) {
@@ -66,7 +65,6 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 				typ:       QueryType_INSERT,
 				skipError: systemTable,
 			}
-			log.Debug("----no:%d, query:%+v", i, query)
 			h.execute(conn, keep, query)
 		}
 	}
@@ -74,7 +72,9 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 	if h.xaConn != nil {
 		conn = h.xaConn
 	} else {
-		conn = h.shift.toPool.Get()
+		if conn = h.shift.toPool.Get(); conn == nil {
+			h.shift.panicMe("shift.insert.get.to.conn.nil.error")
+		}
 	}
 
 	// if e.DataType == canal.BINLOGDATA {
