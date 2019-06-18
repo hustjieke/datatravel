@@ -302,3 +302,16 @@ func (c *Canal) CatchMasterPos(timeout time.Duration) error {
 
 	return c.WaitUntilPos(pos, timeout)
 }
+
+func (c *Canal) GetMasterVersion() (string, error) {
+	query := "SELECT VERSION()"
+	rr, err := c.Execute(query)
+	if err != nil {
+		return "", errors.Trace(err)
+	}
+	mysqlVersion, err := rr.GetString(0, 0)
+	if err != nil {
+		return "", errors.Trace(err)
+	}
+	return mysqlVersion, nil
+}

@@ -584,8 +584,15 @@ func (shift *Shift) masterPosition() *mysql.Position {
 // 1. check mysqldump worker done
 // 2. check sync binlog pos
 func (shift *Shift) behindsCheckStart() error {
+	// Fisrt we get master mysql version to check if master support gtid
+	masterVersion, err := shift.canal.GetMasterVersion()
+	if err != nil {
+		shift.panicMe("error:%+v", err)
+	}
+	isMysql5_5 := strings.HasPrefix(masterVersion, "5.5")
 	go func(s *Shift) {
 		log := s.log
+		log.Info("master version:%+v, isMysql5_5:%+v", masterVersion, isMysql5_5)
 		log.Info("shift.dumping...")
 		// If some error happened during dumping, wait dump will be still set dump done.
 		<-s.canal.WaitDumpDone()
@@ -602,14 +609,20 @@ func (shift *Shift) behindsCheckStart() error {
 			// If canal get something wrong during dumping or syncing data, we should log error
 			if s.CheckCanalStatus() {
 				// Get master and sync gtid
-				if s.canal.SyncedGTIDSet() != nil {
-					syncGtid := s.canal.SyncedGTIDSet().(*mysql.MysqlGTIDSet)
-					progress.SynGTID = syncGtid.String()
-				}
-				if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
-					log.Panic("error:%+v", err)
+				if isMysql5_5 {
+					progress.SynGTID = "MySQL 5.5 not support gtid"
+					progress.MasterGTID = "MySQL 5.5 not support gtid"
 				} else {
-					progress.MasterGTID = masterGtid.String()
+					if s.canal.SyncedGTIDSet() != nil {
+						syncGtid := s.canal.SyncedGTIDSet().(*mysql.MysqlGTIDSet)
+						progress.SynGTID = syncGtid.String()
+					}
+
+					if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
+						shift.panicMe("error:%+v", err)
+					} else {
+						progress.MasterGTID = masterGtid.String()
+					}
 				}
 
 				masterPos := s.masterPosition()
