@@ -39,6 +39,9 @@ type Config struct {
 	Behinds   int
 	Checksum  bool
 
+	// Will override Databases
+	TableDB      string
+	Tables       []string
 	Databases    []string
 	DBTablesMaps map[string][]string // key:db, value: tables
 

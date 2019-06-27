@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"runtime"
 	"shift"
+	"strings"
 	"syscall"
 	"xlog"
 )
@@ -27,18 +28,17 @@ var (
 	metaDir            = flag.String("meta-dir", "./datatravel-meta", "meta dir to store database meta data")
 	fkCheck            = flag.Bool("fk-check", true, "FOREIGN_KEY_CHECK ture or false to travel data")
 	maxAllowedPacketMB = flag.Int("max-allowed-packet-MB", 16, "Set to change the default max_allowed_packet size")
+	tabledb            = flag.String("table-db", "", "db specified to travel")
+	tables             = flag.String("tables", "", "tables specified to travel")
+	databases          = flag.String("databases", "", "databases specified to travel")
 
 	from         = flag.String("from", "", "Source MySQL backend")
 	fromUser     = flag.String("from-user", "", "MySQL user, must have replication privilege")
 	fromPassword = flag.String("from-password", "", "MySQL user password")
-	fromDatabase = flag.String("from-database", "", "Source database")
-	fromTable    = flag.String("from-table", "", "Source table")
 
 	to         = flag.String("to", "", "Destination MySQL backend")
 	toUser     = flag.String("to-user", "", "MySQL user, must have replication privilege")
 	toPassword = flag.String("to-password", "", "MySQL user password")
-	toDatabase = flag.String("to-database", "", "Destination database")
-	toTable    = flag.String("to-table", "", "Destination table")
 
 	checksum  = flag.Bool("checksum", true, "Checksum the from table and to table after shifted(defaults true)")
 	mysqlDump = flag.String("mysqldump", "mysqldump", "mysqldump path")
@@ -79,20 +79,36 @@ func main() {
 		MetaDir:            *metaDir,
 		FkCheck:            *fkCheck,
 		MaxAllowedPacketMB: *maxAllowedPacketMB,
+		TableDB:            *tabledb,
 		From:               *from,
 		FromUser:           *fromUser,
 		FromPassword:       *fromPassword,
-		FromDatabase:       *fromDatabase,
-		FromTable:          *fromTable,
 		To:                 *to,
 		ToUser:             *toUser,
 		ToPassword:         *toPassword,
-		ToDatabase:         *toDatabase,
-		ToTable:            *toTable,
 		MySQLDump:          *mysqlDump,
 		Threads:            *threads,
 		Behinds:            *behinds,
 		Checksum:           *checksum,
+	}
+	if *tables != "" {
+		tbls := strings.Split(*tables, ",")
+		for _, tbl := range tbls {
+			if strings.TrimSpace(tbl) != "" {
+				cfg.Tables = append(cfg.Tables, tbl)
+			}
+		}
+	}
+	if *databases != "" {
+		if cfg.TableDB != "" || len(cfg.Tables) != 0 {
+			log.Panicf("shift.not.allowed.both.specify.args.tabledb[%+v].with.databases[%+v]", cfg.TableDB, cfg.Databases)
+		}
+		dbs := strings.Split(*databases, ",")
+		for _, db := range dbs {
+			if strings.TrimSpace(db) != "" {
+				cfg.Databases = append(cfg.Databases, db)
+			}
+		}
 	}
 	cfg.DBTablesMaps = make(map[string][]string)
 	log.Info("datatravel.cfg:%+v", cfg)

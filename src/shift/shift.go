@@ -86,6 +86,16 @@ func (shift *Shift) prepareConnection() error {
 	return nil
 }
 
+// Check if tbl is in tables
+func (shift *Shift) isIncludeTbl(tbls []string, tbl string) bool {
+	for _, v := range tbls {
+		if v == tbl {
+			return true
+		}
+	}
+	return false
+}
+
 func (shift *Shift) prepareTable() error {
 	log := shift.log
 	cfg := shift.cfg
@@ -104,22 +114,28 @@ func (shift *Shift) prepareTable() error {
 		shift.panicMe("shift.get.to.conn.nil.error")
 	}
 
-	// Get databases
-	log.Info("shift.get.database...")
-	sql := "show databases;"
-	r, err := fromConn.Execute(sql)
-	if err != nil {
-		log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
-		return err
-	}
-	for i := 0; i < r.RowNumber(); i++ {
-		str, _ := r.GetString(i, 0)
-		if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
-			cfg.Databases = append(cfg.Databases, str)
-		}
-	}
+	// Get databases if len(dbs) == 0
 	if len(cfg.Databases) == 0 {
-		return errors.New("no.database.to.shift")
+		if cfg.TableDB != "" {
+			cfg.Databases = append(cfg.Databases, cfg.TableDB)
+		} else {
+			log.Info("shift.get.database...")
+			sql := "show databases;"
+			r, err := fromConn.Execute(sql)
+			if err != nil {
+				log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+				return err
+			}
+			for i := 0; i < r.RowNumber(); i++ {
+				str, _ := r.GetString(i, 0)
+				if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
+					cfg.Databases = append(cfg.Databases, str)
+				}
+			}
+			if len(cfg.Databases) == 0 {
+				return errors.New("no.database.to.shift")
+			}
+		}
 	}
 
 	for _, db := range cfg.Databases {
@@ -163,10 +179,23 @@ func (shift *Shift) prepareTable() error {
 		tblRows := "Rows"
 		for i := 0; i < r.RowNumber(); i++ {
 			tbl, _ := r.GetStringByName(i, tblName)
-			tables = append(tables, tbl)
-			rows, _ := r.GetUintByName(i, tblRows)
-			cfg.FromRows += rows
-			log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
+			// In case --table-db, --tables
+			if len(cfg.Tables) != 0 {
+				if shift.isIncludeTbl(cfg.Tables, tbl) {
+					tables = append(tables, tbl)
+					rows, _ := r.GetUintByName(i, tblRows)
+					cfg.FromRows += rows
+					log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
+				} else {
+					continue
+				}
+			} else {
+				// In case --databases or --table-db
+				tables = append(tables, tbl)
+				rows, _ := r.GetUintByName(i, tblRows)
+				cfg.FromRows += rows
+				log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
+			}
 		}
 		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
@@ -213,35 +242,62 @@ func (shift *Shift) checkTableExistForRadonDB() error {
 	toConn := shift.toPool.Get()
 	defer shift.toPool.Put(toConn)
 
-	// Get databases
-	log.Info("shift.get.database...")
-	sql := "show databases;"
-	r, err := fromConn.Execute(sql)
-	if err != nil {
-		log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
-		return err
-	}
-	for i := 0; i < r.RowNumber(); i++ {
-		str, _ := r.GetString(i, 0)
-		if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
-			cfg.Databases = append(cfg.Databases, str)
+	// Get databases if len(dbs) == 0
+	if len(cfg.Databases) == 0 {
+		if cfg.TableDB != "" {
+			cfg.Databases = append(cfg.Databases, cfg.TableDB)
+		} else {
+			// Get all dbs except system dbs
+			log.Info("shift.get.database...")
+			sql := "show databases;"
+			r, err := fromConn.Execute(sql)
+			if err != nil {
+				log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+				return err
+			}
+			for i := 0; i < r.RowNumber(); i++ {
+				str, _ := r.GetString(i, 0)
+				if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
+					cfg.Databases = append(cfg.Databases, str)
+				}
+			}
+			if len(cfg.Databases) == 0 {
+				return errors.New("no.database.to.shift")
+			}
 		}
 	}
-	if len(cfg.Databases) == 0 {
-		return errors.New("no.database.to.shift")
-	}
+
+	// Get databases
+	/*
+		log.Info("shift.get.database...")
+		sql := "show databases;"
+		r, err := fromConn.Execute(sql)
+		if err != nil {
+			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
+			return err
+		}
+		for i := 0; i < r.RowNumber(); i++ {
+			str, _ := r.GetString(i, 0)
+			if _, isSystem := sysDatabases[strings.ToLower(str)]; !isSystem {
+				cfg.Databases = append(cfg.Databases, str)
+			}
+		}
+		if len(cfg.Databases) == 0 {
+			return errors.New("no.database.to.shift")
+		}
+	*/
 
 	// Check if db.table exist
 	for _, db := range cfg.Databases {
 		// Prepare database, check the database is not system database and create them.
-		log.Info("shift.prepare.database[%s]...", db)
+		log.Info("shift.check.if.database[%s].exist...", db)
 		sql := fmt.Sprintf("use %s", db)
 		r, err := toConn.Execute(sql)
 		if err != nil {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
 			return err
 		} else {
-			log.Info("shift.database.exists[%s]", db)
+			log.Info("shift.check.database.ok[%s]", db)
 		}
 
 		// Get from tables
@@ -264,10 +320,23 @@ func (shift *Shift) checkTableExistForRadonDB() error {
 		tblRows := "Rows"
 		for i := 0; i < r.RowNumber(); i++ {
 			tbl, _ := r.GetStringByName(i, tblName)
-			tables = append(tables, tbl)
-			rows, _ := r.GetUintByName(i, tblRows)
-			cfg.FromRows += rows
-			log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
+			// In case --table-db, --tables
+			if len(cfg.Tables) != 0 {
+				if shift.isIncludeTbl(cfg.Tables, tbl) {
+					tables = append(tables, tbl)
+					rows, _ := r.GetUintByName(i, tblRows)
+					cfg.FromRows += rows
+					log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
+				} else {
+					continue
+				}
+			} else {
+				// In case --databases or --table-db
+				tables = append(tables, tbl)
+				rows, _ := r.GetUintByName(i, tblRows)
+				cfg.FromRows += rows
+				log.Info("shift.show.[%s.%s].rows:%+v", db, tbl, rows)
+			}
 		}
 		cfg.DBTablesMaps[db] = tables
 		if len(tables) == 0 {
@@ -328,10 +397,16 @@ func (shift *Shift) prepareCanal() error {
 	cfg.Password = conf.FromPassword
 	cfg.Dump.ExecutionPath = conf.MySQLDump
 	cfg.Dump.DiscardErr = false
-	// TableDB and Tables will be used in the future
-	// cfg.Dump.TableDB = conf.FromDatabase
-	// cfg.Dump.Tables = []string{conf.FromTable}
-	cfg.Dump.Databases = conf.Databases
+	if len(conf.Tables) != 0 && conf.TableDB != "" {
+		cfg.Dump.TableDB = conf.TableDB
+		cfg.Dump.Tables = conf.Tables
+	} else if len(conf.Tables) == 0 && conf.TableDB != "" {
+		// In this case conf.Databases is eq to conf.TableDB
+		cfg.Dump.Databases = conf.Databases
+	} else {
+		// like db1 [db2 db3 ....]
+		cfg.Dump.Databases = conf.Databases
+	}
 	cfg.Dump.MaxAllowedPacketMB = conf.MaxAllowedPacketMB
 
 	// canal
@@ -466,6 +541,9 @@ func (shift *Shift) dumpProgress() error {
 		progress := &config.TravelProgress{
 			PositionBehinds: "not start yet!",
 		}
+		// First time to calculate rows and flag
+		var baseCalRows uint64
+		firstCalFlag := true
 		for {
 			dumpTime += secondsSleep
 
@@ -495,10 +573,14 @@ func (shift *Shift) dumpProgress() error {
 					rows, _ := r.GetUintByName(i, tblRows)
 					cfg.ToRows += rows
 				}
+				if firstCalFlag {
+					baseCalRows = cfg.ToRows
+					firstCalFlag = false
+				}
 			}
 
 			// Calculate remain time
-			avgRate := cfg.ToRows / dumpTime
+			avgRate := (cfg.ToRows - baseCalRows) / dumpTime
 			// Unit: second
 			remainTime := (cfg.FromRows - cfg.ToRows) / avgRate
 			seconds := remainTime % secondsPerMinute
@@ -524,7 +606,7 @@ func (shift *Shift) dumpProgress() error {
 			config.UpdateTravelProgress(progress, cfg.MetaDir)
 			log.Info("travel.progress%+v", progress)
 
-			if per > 90 {
+			if per > 98 {
 				log.Info("wait.dump.shift.dump.done.during.progress:%+v", perStr)
 				<-s.canal.WaitDumpDone()
 				progress.DumpProgressRate = fmt.Sprintf("%v", "100%")
