@@ -34,7 +34,12 @@ func (h *EventHandler) ParseValue(e *canal.RowsEvent, idx int, v interface{}) st
 			switch e.Table.Columns[idx].RawType {
 			case "tinyblob", "blob", "mediumblob", "longblob":
 				// Here we should add prefix "0x" for hex
-				return fmt.Sprintf("0x%x", v)
+				str := fmt.Sprintf("0x%x", v)
+				// If str is empty, we`ll got "0x"
+				if str == "0x" {
+					return "\"\""
+				}
+				return str
 			default:
 				s := fmt.Sprintf("%v", v)
 				return fmt.Sprintf("\"%s\"", EscapeBytes(common.StringToBytes(s)))
