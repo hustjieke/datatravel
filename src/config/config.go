@@ -50,4 +50,10 @@ type Config struct {
 	// FromRows and ToRows are used to count dump progress
 	FromRows uint64
 	ToRows   uint64
+
+	// count(*) of to db.tbls, here we only count tables include
+	// auto_increment columns key: db.tbl, value: count(*) rows
+	ToTblsRowsBefore map[string]uint64
+	// checksum of db.tbls of to,key: db.tbl, value: checksum table db.tbl
+	ToTblsChecksumBefore map[string]uint32
 }
