@@ -40,10 +40,12 @@ type Config struct {
 	Checksum  bool
 
 	// Will override Databases
-	TableDB      string
-	Tables       []string
-	Databases    []string
+	TableDB   string
+	Tables    []string
+	Databases []string
+
 	DBTablesMaps map[string][]string // key:db, value: tables
+	AutoIncTable map[string]bool     // key:db.table, value: bool
 
 	// FromRows and ToRows are used to count dump progress
 	FromRows uint64

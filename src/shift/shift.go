@@ -388,6 +388,39 @@ func (shift *Shift) checkTableExistForRadonDB() error {
 	return nil
 }
 
+// TODO(gry), check for mysql 5.6--datetime, some bug exist in checksum type datetime
+// Now this func only used for travel mysql-->RadonDB
+func (shift *Shift) getAutoIncTable() error {
+	log := shift.log
+	cfg := shift.cfg
+
+	// From connection.
+	fromConn := shift.fromPool.Get()
+	defer shift.fromPool.Put(fromConn)
+	if fromConn == nil {
+		shift.panicMe("shift.get.from.conn.nil.error")
+	}
+
+	log.Info("shift.get.auto.inc.tables")
+	for db, tbls := range cfg.DBTablesMaps {
+		for _, tbl := range tbls {
+			sql := fmt.Sprintf("show create table `%s`.`%s`", db, tbl)
+			r, err = fromConn.Execute(sql)
+			if err != nil {
+				log.Error("shift.show.[%s].create.table.sql[%s].error:%+v", cfg.From, sql, err)
+				return err
+			}
+			createSql, err = r.GetString(0, 1)
+			if strings.Contains(createSql, "AUTO_INCREMENT") {
+				dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
+				cfg.AutoIncTable[dbTbl] = true
+			}
+		}
+	}
+
+	return nil
+}
+
 func (shift *Shift) prepareCanal() error {
 	log := shift.log
 	conf := shift.cfg
@@ -535,7 +568,6 @@ func (shift *Shift) dumpProgress() error {
 		toConn := s.toPool.Get()
 		defer s.toPool.Put(toConn)
 		var dumpTime uint64
-		time.Sleep(secondsSleep * time.Second)
 		log.Info("cfg.FromRows when dump:%d", cfg.FromRows)
 
 		progress := &config.TravelProgress{
@@ -545,7 +577,11 @@ func (shift *Shift) dumpProgress() error {
 		var baseCalRows uint64
 		firstCalFlag := true
 		for {
-			dumpTime += secondsSleep
+			// If first time we execute, skip to add dumpTime to get baseCalRows first
+			// and then we really start to calculate dump progress
+			if !firstCalFlag {
+				dumpTime += secondsSleep
+			}
 
 			// Get rows from toConn
 			cfg.ToRows = 0
@@ -573,16 +609,20 @@ func (shift *Shift) dumpProgress() error {
 					rows, _ := r.GetUintByName(i, tblRows)
 					cfg.ToRows += rows
 				}
+				// Store rows when execute loop first time
 				if firstCalFlag {
 					baseCalRows = cfg.ToRows
 					firstCalFlag = false
+					time.Sleep(secondsSleep * time.Second)
+					continue
 				}
 			}
 
 			// Calculate remain time
-			avgRate := (cfg.ToRows - baseCalRows) / dumpTime
+			rowsInc := cfg.ToRows - baseCalRows
+			avgRate := rowsInc / dumpTime
 			// Unit: second
-			remainTime := (cfg.FromRows - cfg.ToRows) / avgRate
+			remainTime := (cfg.FromRows - rowsInc) / avgRate
 			seconds := remainTime % secondsPerMinute
 			hours := (remainTime - seconds) / secondsPerHour
 			minutes := (remainTime - seconds - hours*secondsPerHour) / secondsPerMinute
@@ -722,6 +762,9 @@ func (shift *Shift) Start() error {
 	}
 	if shift.cfg.ToFlavor == config.ToRadonDBFlavor {
 		if err := shift.checkTableExistForRadonDB(); err != nil {
+			return err
+		}
+		if err := shift.getAutoIncTable(); err != nil {
 			return err
 		}
 	} else {
