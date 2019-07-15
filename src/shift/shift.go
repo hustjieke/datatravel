@@ -405,12 +405,12 @@ func (shift *Shift) getAutoIncTable() error {
 	for db, tbls := range cfg.DBTablesMaps {
 		for _, tbl := range tbls {
 			sql := fmt.Sprintf("show create table `%s`.`%s`", db, tbl)
-			r, err = fromConn.Execute(sql)
+			r, err := fromConn.Execute(sql)
 			if err != nil {
 				log.Error("shift.show.[%s].create.table.sql[%s].error:%+v", cfg.From, sql, err)
 				return err
 			}
-			createSql, err = r.GetString(0, 1)
+			createSql, err := r.GetString(0, 1)
 			if strings.Contains(createSql, "AUTO_INCREMENT") {
 				dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
 				cfg.AutoIncTable[dbTbl] = true
@@ -419,6 +419,60 @@ func (shift *Shift) getAutoIncTable() error {
 	}
 
 	return nil
+}
+
+// Only used for mysql-->radondb
+func (shift *Shift) getToChecksumInfos() error {
+	log := shift.log
+	cfg := shift.cfg
+
+	// To connection.
+	toConn := shift.toPool.Get()
+	defer shift.toPool.Put(toConn)
+	if toConn == nil {
+		shift.panicMe("shift.get.to.conn.nil.error")
+	}
+
+	log.Info("shift.get.checksum.and.count.infos.from.to")
+	for db, tbls := range cfg.DBTablesMaps {
+		for _, tbl := range tbls {
+			dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
+			if cfg.AutoIncTable[dbTbl] {
+				sql := fmt.Sprintf("select count(*) from dbTbl")
+				r, err := toConn.Execute(sql)
+				if err != nil {
+					log.Error("shift.select.[%s].count.table.sql[%s].error:%+v", cfg.From, sql, err)
+					return err
+				}
+
+				v, err := r.GetUint(0, 0)
+				if err != nil {
+					shift.panicMe("shift.get.%s.table[%s.%s].count.error:%+v", "to", db, tbl, err)
+				}
+				cfg.ToTblsRowsBefore[dbTbl] = v
+			} else {
+				sql := fmt.Sprintf("checksum table `%s`.`%s`", db, tbl)
+				r, err := toConn.Execute(sql)
+				if err != nil {
+					log.Error("shift.checksum.[%s].table.sql[%s].error:%+v", cfg.From, sql, err)
+					return err
+				}
+				v, err := r.GetUint(0, 1)
+				if err != nil {
+					shift.panicMe("shift.get.%s.table[%s.%s].checksum.error:%+v", "to", db, tbl, err)
+				}
+				cfg.ToTblsChecksumBefore[dbTbl] = uint32(v)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Check if db.table has auto_increment column.
+func (shift *Shift) containAutoIncCol(db, tbl string) bool {
+	dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
+	return shift.cfg.AutoIncTable[dbTbl]
 }
 
 func (shift *Shift) prepareCanal() error {
@@ -481,9 +535,11 @@ func (shift *Shift) ChecksumTables() error {
 	return nil
 }
 
+// TODO(gry) 后面最好还是分离成checksum和checkcount两个函数，清晰的很
 func (shift *Shift) checksumTables(db string, tbls []string) error {
 	log := shift.log
-	var fromchecksum, tochecksum uint64
+	var fromchecksum, tochecksum uint32
+	var fromcount, tocount uint64
 
 	fromConn := shift.fromPool.Get()
 	defer shift.fromPool.Put(fromConn)
@@ -512,24 +568,60 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 			c <- v
 		}
 
+		// Only used for mysql-->radondb
+		countTblFunc := func(t string, Conn *client.Conn, Database string, Table string, c chan uint64) {
+			sql := fmt.Sprintf("select count(*) from %s.%s", Database, Table)
+			r, err := Conn.Execute(sql)
+			if err != nil {
+				shift.panicMe("shift.count.%s.table[%s.%s].error:%+v", t, Database, Table, err)
+			}
+
+			v, err := r.GetUint(0, 0)
+			if err != nil {
+				shift.panicMe("shift.get.%s.table[%s.%s].count.error:%+v", t, Database, Table, err)
+			}
+			c <- v
+		}
+
 		fromchan := make(chan uint64, 1)
 		tochan := make(chan uint64, 1)
 
-		// execute checksum func
-		{
-			go checksumFunc("from", fromConn, db, tbl, fromchan)
-			go checksumFunc("to", toConn, db, tbl, tochan)
+		if shift.cfg.ToFlavor == config.ToRadonDBFlavor && shift.containAutoIncCol(db, tbl) {
+			// execute count func
+			{
+				go countTblFunc("from", fromConn, db, tbl, fromchan)
+				go countTblFunc("to", toConn, db, tbl, tochan)
+			}
+			fromcount = <-fromchan
+			tocount = <-tochan
+			dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
+			toRealCount := tocount - shift.cfg.ToTblsRowsBefore[dbTbl]
+			if fromcount != toRealCount {
+				err := fmt.Errorf("count not equivalent: from-table[%v.%v] count is %v, to-table[%v.%v] count is %v", db, tbl, fromcount, db, tbl, toRealCount)
+				log.Error("shift.count.table.err:%+v", err)
+				shift.wg.Done()
+				shift.panicMe("shift.count.table.err:", err)
+			}
+		} else {
+			// execute checksum func
+			{
+				go checksumFunc("from", fromConn, db, tbl, fromchan)
+				go checksumFunc("to", toConn, db, tbl, tochan)
+			}
+			fromchecksum = uint32(<-fromchan)
+			tochecksum = uint32(<-tochan)
+			if shift.cfg.ToFlavor == config.ToRadonDBFlavor {
+				dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
+				fromchecksum += shift.cfg.ToTblsChecksumBefore[dbTbl]
+			}
+			if fromchecksum != tochecksum {
+				err := fmt.Errorf("checksum not equivalent: from-table[%v.%v] checksum is %v, to-table[%v.%v] checksum is %v", db, tbl, fromchecksum, db, tbl, tochecksum)
+				log.Error("shift.checksum.table.err:%+v", err)
+				shift.wg.Done()
+				shift.panicMe("shift.checksum.table.err:", err)
+			}
+			log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 		}
-		fromchecksum = <-fromchan
-		tochecksum = <-tochan
-
-		if fromchecksum != tochecksum {
-			err := fmt.Errorf("checksum not equivalent: from-table[%v.%v] checksum is %v, to-table[%v.%v] checksum is %v", db, tbl, fromchecksum, db, tbl, tochecksum)
-			log.Error("shift.checksum.table.err:%+v", err)
-			shift.wg.Done()
-			shift.panicMe("shift.checksum.table.err:", err)
-		}
-		log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 	}
 	shift.wg.Done()
 	return nil
