@@ -111,6 +111,7 @@ func main() {
 		}
 	}
 	cfg.DBTablesMaps = make(map[string][]string)
+	cfg.AutoIncTable = make(map[string]bool)
 	log.Info("datatravel.cfg:%+v", cfg)
 	shift := shift.NewShift(log, cfg)
 	if err := shift.Start(); err != nil {
