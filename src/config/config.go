@@ -45,15 +45,17 @@ type Config struct {
 	Databases []string
 
 	DBTablesMaps map[string][]string // key:db, value: tables
-	AutoIncTable map[string]bool     // key:db.table, value: bool
 
 	// FromRows and ToRows are used to count dump progress
 	FromRows uint64
 	ToRows   uint64
 
+	// Next args are used in case mysql-->radondb
+	AutoIncTable map[string]bool // key:db.table, value: bool
 	// count(*) of to db.tbls, here we only count tables include
 	// auto_increment columns key: db.tbl, value: count(*) rows
 	ToTblsRowsBefore map[string]uint64
 	// checksum of db.tbls of to,key: db.tbl, value: checksum table db.tbl
 	ToTblsChecksumBefore map[string]uint32
+	IsNotFisrtTime       bool
 }

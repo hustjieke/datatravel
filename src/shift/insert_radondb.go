@@ -18,7 +18,7 @@ import (
 	"github.com/xelabs/go-mysqlstack/sqlparser/depends/common"
 )
 
-func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
+func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFisrtTime bool) {
 	var conn *client.Conn
 	h.wg.Add(1)
 
@@ -45,7 +45,11 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 				} else {
 					switch {
 					case e.Table.Columns[idx].Type == schema.TYPE_NUMBER:
-						values = append(values, fmt.Sprintf("%d", v))
+						if e.Table.Columns[idx].IsAuto == true && isNotFisrtTime {
+							values = append(values, "0")
+						} else {
+							values = append(values, fmt.Sprintf("%d", v))
+						}
 					case e.Table.Columns[idx].Type == schema.TYPE_BIT:
 						// Here we should add prefix "0x" for hex
 						values = append(values, fmt.Sprintf("0x%x", v))
@@ -55,6 +59,7 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable bool) {
 							// Here we should add prefix "0x" for hex
 							values = append(values, fmt.Sprintf("0x%x", v))
 						default:
+							// In case dbs ---> db, db1.tbl and db2.tbl`s auto_increment may be conflicted
 							s := fmt.Sprintf("%v", v)
 							values = append(values, fmt.Sprintf("\"%s\"", EscapeBytes(common.StringToBytes(s))))
 						}
