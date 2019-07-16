@@ -611,8 +611,7 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 		fromchan := make(chan uint64, 1)
 		tochan := make(chan uint64, 1)
 
-		if shift.cfg.ToFlavor == config.ToRadonDBFlavor && shift.containAutoIncCol(db, tbl) &&
-			shift.cfg.IsNotFisrtTime {
+		if shift.cfg.ToFlavor == config.ToRadonDBFlavor && shift.containAutoIncCol(db, tbl) {
 			// execute count func
 			{
 				go countTblFunc("from", fromConn, db, tbl, fromchan)
@@ -628,6 +627,7 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 				shift.wg.Done()
 				shift.panicMe("shift.count.table.err:", err)
 			}
+			log.Info("shift.checksum.count.table.from[%v.%v, count:%v].to[%v.%v, crc:%v].ok", db, tbl, fromcount, db, tbl, toRealCount)
 		} else {
 			// execute checksum func
 			{
