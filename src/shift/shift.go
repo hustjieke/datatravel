@@ -485,8 +485,17 @@ func (shift *Shift) containAutoIncCol(db, tbl string) bool {
 // Only used for mysql-->radondb
 // If we fisrt do db1 db2 ... to one db, the ToRows should be 0.
 func (shift *Shift) setIsNotFirstTime() {
-	if shift.cfg.ToRows != 0 {
-		shift.cfg.IsNotFisrtTime = true
+	for _, v := range shift.cfg.ToTblsChecksumBefore {
+		if v != 0 {
+			shift.cfg.IsNotFisrtTime = true
+			return
+		}
+	}
+	for _, v := range shift.cfg.ToTblsRowsBefore {
+		if v != 0 {
+			shift.cfg.IsNotFisrtTime = true
+			return
+		}
 	}
 }
 
