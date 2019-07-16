@@ -711,13 +711,13 @@ func (shift *Shift) dumpProgress() error {
 					rows, _ := r.GetUintByName(i, tblRows)
 					cfg.ToRows += rows
 				}
-				// Store rows when execute loop first time
-				if firstCalFlag {
-					baseCalRows = cfg.ToRows
-					firstCalFlag = false
-					time.Sleep(secondsSleep * time.Second)
-					continue
-				}
+			}
+			// Store rows when execute loop first time
+			if firstCalFlag {
+				baseCalRows = cfg.ToRows
+				firstCalFlag = false
+				time.Sleep(secondsSleep * time.Second)
+				continue
 			}
 
 			// Calculate remain time
