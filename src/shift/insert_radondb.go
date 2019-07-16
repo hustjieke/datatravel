@@ -45,8 +45,11 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 				} else {
 					switch {
 					case e.Table.Columns[idx].Type == schema.TYPE_NUMBER:
-						if e.Table.Columns[idx].IsAuto == true && isNotFisrtTime {
-							values = append(values, "0")
+						// In case dbs ---> db, db1.tbl and db2.tbl`s auto_increment may be conflicted
+						// if e.Table.Columns[idx].IsAuto == true && isNotFisrtTime {
+						// values = append(values, "0")
+						if e.Table.Columns[idx].IsAuto {
+							continue
 						} else {
 							values = append(values, fmt.Sprintf("%d", v))
 						}
@@ -59,7 +62,6 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 							// Here we should add prefix "0x" for hex
 							values = append(values, fmt.Sprintf("0x%x", v))
 						default:
-							// In case dbs ---> db, db1.tbl and db2.tbl`s auto_increment may be conflicted
 							s := fmt.Sprintf("%v", v)
 							values = append(values, fmt.Sprintf("\"%s\"", EscapeBytes(common.StringToBytes(s))))
 						}
@@ -70,6 +72,10 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 			cols := common.NewBuffer(256)
 			len := len(e.Table.Columns)
 			for idx, col := range e.Table.Columns {
+				// Skip auto_increment col
+				if col.IsAuto {
+					continue
+				}
 				cols.WriteString(col.Name)
 				if idx != (len - 1) {
 					cols.WriteString(",")
