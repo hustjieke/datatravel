@@ -438,8 +438,14 @@ func (shift *Shift) getToChecksumInfos() error {
 		for _, tbl := range tbls {
 			dbTbl := fmt.Sprintf("`%s`.`%s`", db, tbl)
 			if cfg.AutoIncTable[dbTbl] {
-				sql := fmt.Sprintf("select count(*) from dbTbl")
+				sql := fmt.Sprintf("use `%s`", db)
 				r, err := toConn.Execute(sql)
+				if err != nil {
+					log.Error("shift.select.[%s].count.table.sql[%s].error:%+v", cfg.From, sql, err)
+					return err
+				}
+				sql = fmt.Sprintf("select count(*) from `%s`.`%s`", db, tbl)
+				r, err = toConn.Execute(sql)
 				if err != nil {
 					log.Error("shift.select.[%s].count.table.sql[%s].error:%+v", cfg.From, sql, err)
 					return err
