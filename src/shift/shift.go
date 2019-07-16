@@ -461,6 +461,7 @@ func (shift *Shift) getToChecksumInfos() error {
 				if err != nil {
 					shift.panicMe("shift.get.%s.table[%s.%s].checksum.error:%+v", "to", db, tbl, err)
 				}
+				log.Info("gry----v:", v)
 				cfg.ToTblsChecksumBefore[dbTbl] = uint32(v)
 			}
 		}
@@ -867,6 +868,9 @@ func (shift *Shift) Start() error {
 			return err
 		}
 		if err := shift.getAutoIncTable(); err != nil {
+			return err
+		}
+		if err := shift.getToChecksumInfos(); err != nil {
 			return err
 		}
 		shift.setIsNotFirstTime()
