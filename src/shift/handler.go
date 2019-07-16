@@ -62,7 +62,7 @@ func (h *EventHandler) OnRow(e *canal.RowsEvent) error {
 			h.shift.cfg.ToFlavor == config.ToMariaDBFlavor {
 			h.InsertMySQLRow(e, isSystem)
 		} else {
-			h.InsertRadonDBRow(e, isSystem)
+			h.InsertRadonDBRow(e, isSystem, h.shift.cfg.IsNotFisrtTime)
 		}
 	case canal.DeleteAction:
 		h.DeleteRow(e)

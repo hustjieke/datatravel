@@ -475,9 +475,18 @@ func (shift *Shift) containAutoIncCol(db, tbl string) bool {
 	return shift.cfg.AutoIncTable[dbTbl]
 }
 
+// Only used for mysql-->radondb
+// If we fisrt do db1 db2 ... to one db, the ToRows should be 0.
+func (shift *Shift) setIsNotFirstTime() {
+	if shift.cfg.ToRows != 0 {
+		shift.cfg.IsNotFisrtTime = true
+	}
+}
+
 func (shift *Shift) prepareCanal() error {
 	log := shift.log
 	conf := shift.cfg
+	log.Info("datatravel.cfg.after.prepare.table:%+v", conf)
 	cfg := canal.NewDefaultConfig()
 	cfg.Addr = conf.From
 	cfg.User = conf.FromUser
@@ -586,7 +595,8 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 		fromchan := make(chan uint64, 1)
 		tochan := make(chan uint64, 1)
 
-		if shift.cfg.ToFlavor == config.ToRadonDBFlavor && shift.containAutoIncCol(db, tbl) {
+		if shift.cfg.ToFlavor == config.ToRadonDBFlavor && shift.containAutoIncCol(db, tbl) &&
+			shift.cfg.IsNotFisrtTime {
 			// execute count func
 			{
 				go countTblFunc("from", fromConn, db, tbl, fromchan)
@@ -859,6 +869,7 @@ func (shift *Shift) Start() error {
 		if err := shift.getAutoIncTable(); err != nil {
 			return err
 		}
+		shift.setIsNotFirstTime()
 	} else {
 		if err := shift.prepareTable(); err != nil {
 			return err
