@@ -1,6 +1,9 @@
 export GOPATH := $(shell pwd)
 export PATH := $(GOPATH)/bin:$(PATH)
 
+buildes:
+	go build -v -o bin/mysql-elasticsearch ./src/datatravel/elasticsearch.go
+
 build: LDFLAGS   += $(shell GOPATH=${GOPATH} src/build/ldflags.sh)
 build:
 	@echo "--> Building..."
@@ -13,7 +16,7 @@ clean:
 	@echo "--> Cleaning..."
 	@mkdir -p bin/
 	@go clean
-	@rm -f bin/*
+	@rm -f bin/datatravel bin/datatravelcli bin/mysql-elasticsearch
 
 fmt:
 	go fmt ./...
@@ -22,6 +25,7 @@ test:
 	@echo "--> Testing..."
 	@$(MAKE) testshift
 	@$(MAKE) testcanal
+	@$(MAKE) testelasticsearch
 
 testshift:
 	go test -v -race shift
@@ -29,6 +33,10 @@ testshift:
 testcanal:
 	go test -v vendor/github.com/siddontang/go-mysql/canal/...
 	go test -v vendor/github.com/siddontang/go-mysql/replication/...
+
+testelasticsearch:
+	go test -v -race elasticsearch/elastic
+	go test -v -race elasticsearch/river
 
 # code coverage
 COVPKGS =	shift\
