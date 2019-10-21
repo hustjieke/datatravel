@@ -636,8 +636,9 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 		} else {
 			// execute checksum func
 			{
-				go checksumFunc("from", fromConn, db, tbl, fromchan)
-				go checksumFunc("to", toConn, db, tbl, tochan)
+				tblWithQuote := fmt.Sprintf("`%s`", tbl)
+				go checksumFunc("from", fromConn, db, tblWithQuote, fromchan)
+				go checksumFunc("to", toConn, db, tblWithQuote, tochan)
 			}
 			fromchecksum = uint32(<-fromchan)
 			tochecksum = uint32(<-tochan)
@@ -648,6 +649,7 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 			if fromchecksum != tochecksum {
 				err := fmt.Errorf("checksum not equivalent: from-table[%v.%v] checksum is %v, to-table[%v.%v] checksum is %v", db, tbl, fromchecksum, db, tbl, tochecksum)
 				log.Error("shift.checksum.table.err:%+v", err)
+				// For json type and result check, we do not panic here
 				shift.wg.Done()
 				shift.panicMe("shift.checksum.table.err:", err)
 			}
