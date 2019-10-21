@@ -166,6 +166,11 @@ func (shift *Shift) prepareTable() error {
 			log.Error("shift.check.database.sql[%s].error:%+v", sql, err)
 			return err
 		}
+		r, err = toConn.Execute(sql)
+		if err != nil {
+			log.Error("shift.use.to.database.sql[%s].error:%+v", sql, err)
+			return err
+		}
 
 		sql = fmt.Sprintf("show table status")
 		r, err = fromConn.Execute(sql)
