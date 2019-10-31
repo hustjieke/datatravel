@@ -567,6 +567,7 @@ func (shift *Shift) ChecksumTables() error {
 
 // TODO(gry) 后面最好还是分离成checksum和checkcount两个函数，清晰的很
 func (shift *Shift) checksumTables(db string, tbls []string) error {
+	defer shift.wg.Done()
 	log := shift.log
 	var fromchecksum, tochecksum uint32
 	var fromcount, tocount uint64
@@ -650,13 +651,12 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 				err := fmt.Errorf("checksum not equivalent: from-table[%v.%v] checksum is %v, to-table[%v.%v] checksum is %v", db, tbl, fromchecksum, db, tbl, tochecksum)
 				log.Error("shift.checksum.table.err:%+v", err)
 				// For json type and result check, we do not panic here
-				shift.wg.Done()
-				shift.panicMe("shift.checksum.table.err:", err)
+				// shift.wg.Done()
+				// shift.panicMe("shift.checksum.table.err:", err)
 			}
 			log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 		}
 	}
-	shift.wg.Done()
 	return nil
 }
 
