@@ -649,12 +649,26 @@ func (shift *Shift) checksumTables(db string, tbls []string) error {
 			}
 			if fromchecksum != tochecksum {
 				err := fmt.Errorf("checksum not equivalent: from-table[%v.%v] checksum is %v, to-table[%v.%v] checksum is %v", db, tbl, fromchecksum, db, tbl, tochecksum)
-				log.Error("shift.checksum.table.err:%+v", err)
+				log.Warning("shift.checksum.table.warning:%+v", err)
+				log.Warning("shift.count(*).table")
+				{
+					tblWithQuote := fmt.Sprintf("`%s`", tbl)
+					go countTblFunc("from", fromConn, db, tblWithQuote, fromchan)
+					go countTblFunc("to", toConn, db, tblWithQuote, tochan)
+				}
+				fromcount = <-fromchan
+				tocount = <-tochan
+				if fromcount != tocount {
+					log.Error("shift.count(*).table.not.equivalent: from-table-count[%v: %v],to-table-count[%v: %v]", tbl, fromcount, tbl, tocount)
+				} else {
+					log.Info("shift.count(*).table.equivalent: from-table-count[%v: %v],to-table-count[%v: %v]", tbl, fromcount, tbl, tocount)
+				}
 				// For json type and result check, we do not panic here
 				// shift.wg.Done()
 				// shift.panicMe("shift.checksum.table.err:", err)
+			} else {
+				log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 			}
-			log.Info("shift.checksum.table.from[%v.%v, crc:%v].to[%v.%v, crc:%v].ok", db, tbl, fromchecksum, db, tbl, tochecksum)
 		}
 	}
 	return nil
@@ -838,7 +852,7 @@ func (shift *Shift) behindsCheckStart() error {
 		<-s.canal.WaitDumpDone()
 		// Wait dump worker done.
 		log.Info("shift.wait.dumper.background.worker.again...")
-		shift.handler.WaitWorkerDone()
+		//shift.handler.WaitWorkerDone()
 		log.Info("shift.wait.dumper.background.worker.done...")
 		progress := &config.TravelProgress{
 			DumpProgressRate: "100%",
@@ -868,6 +882,16 @@ func (shift *Shift) behindsCheckStart() error {
 				if behinds <= shift.cfg.Behinds {
 					shift.checkAndSetReadlock()
 					progress.PositionBehinds = "0"
+					// Get master and sync gtid again
+					if s.canal.SyncedGTIDSet() != nil {
+						syncGtid := s.canal.SyncedGTIDSet().(*mysql.MysqlGTIDSet)
+						progress.SynGTID = syncGtid.String()
+					}
+					if masterGtid, err := s.canal.GetMasterGTIDSet(); err != nil {
+						log.Panic("error:%+v", err)
+					} else {
+						progress.MasterGTID = masterGtid.String()
+					}
 					config.UpdateTravelProgress(progress, s.cfg.MetaDir)
 					log.Info("travel.progress%+v", progress)
 					return
@@ -965,11 +989,16 @@ func (shift *Shift) checkAndSetReadlock() {
 
 	// 3. Wait again
 	{
-		masterPos := shift.masterPosition()
-		log.Info("shift.wait.until.pos[%+v]...", masterPos)
-		if err := shift.canal.WaitUntilPos(*masterPos, time.Second*300); err != nil {
-			shift.panicMe("shift.wait.until.pos[%+v].error:%+v", masterPos, err)
-			return
+		log.Info("shift.wait.until.pos...")
+		for i := 0; i < 10; i++ {
+			time.Sleep(time.Second * 2)
+			log.Info("wait times:%v, sleep 2 seconds", i)
+			masterPos := shift.masterPosition()
+			log.Info("shift.wait.until.pos[%+v]...", masterPos)
+			if err := shift.canal.WaitUntilPos(*masterPos, time.Second*300); err != nil {
+				shift.panicMe("shift.wait.until.pos[%+v].error:%+v", masterPos, err)
+				return
+			}
 		}
 		log.Info("shift.wait.until.pos.done...")
 	}
