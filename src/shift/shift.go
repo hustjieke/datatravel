@@ -756,10 +756,18 @@ func (shift *Shift) dumpProgress() error {
 				time.Sleep(secondsSleep * time.Second)
 				continue
 			}
+			log.Warning(" Calculate remain time")
 
 			// Calculate remain time
 			rowsInc := cfg.ToRows - baseCalRows
+			if dumpTime == 0 {
+				log.Warning("dumpTime should not be 0, set to 1")
+				dumpTime = 1
+			}
 			avgRate := rowsInc / dumpTime
+			if avgRate == 0 {
+				avgRate = 1
+			}
 			// Unit: second
 			remainTime := (cfg.FromRows - rowsInc) / avgRate
 			seconds := remainTime % secondsPerMinute
