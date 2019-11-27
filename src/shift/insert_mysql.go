@@ -14,6 +14,7 @@ import (
 
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/client"
+	"github.com/siddontang/go-mysql/schema"
 )
 
 func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
@@ -32,16 +33,29 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 				keep = false
 			}
 
+			var isEnum bool
 			for idx, v := range row {
 				values = append(values, h.ParseValue(e, idx, v))
+				if e.Table.Columns[idx].Type == schema.TYPE_ENUM {
+					isEnum = true
+				}
 			}
 
-			query := &Query{
-				sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
-				typ:       QueryType_INSERT,
-				skipError: systemTable,
+			if isEnum {
+				query := &Query{
+					sql:       fmt.Sprintf("insert ignore into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
+					typ:       QueryType_INSERT,
+					skipError: systemTable,
+				}
+				h.execute(conn, keep, query)
+			} else {
+				query := &Query{
+					sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
+					typ:       QueryType_INSERT,
+					skipError: systemTable,
+				}
+				h.execute(conn, keep, query)
 			}
-			h.execute(conn, keep, query)
 		}
 	}
 
