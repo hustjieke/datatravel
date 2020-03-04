@@ -103,7 +103,15 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 	// if e.DataType == canal.BINLOGDATA {
 	// Binlog sync
 	if e.Header != nil {
-		executeFunc(conn)
+		tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
+		if ok {
+			// 过滤
+			for _, tbl := range tables {
+				if e.Table.Name == tbl {
+					executeFunc(conn)
+				}
+			}
+		}
 	} else {
 		// canal.DUMPDATA, Backend worker for mysqldump.
 		go func(conn *client.Conn) {
