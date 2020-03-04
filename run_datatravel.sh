@@ -1,0 +1,13 @@
+#./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=192.168.0.4:3306 --from-user=ubuntu --from-password=zhu1241jie --to=192.168.0.6:3306 --to-user=ubuntu --to-password=zhu1241jie --databases ccs48,ccs49 > result_datatravel.log 2>&1 &
+# MySQL IP : 192.168.0.13
+#./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=192.168.0.13:3306 --from-user=ubuntu --from-password=zhu1241jie --to=192.168.0.6:3306 --to-user=ubuntu --to-password=zhu1241jie > result_datatravel.log 2>&1 &
+#./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=127.0.0.1:3306 --from-user=root --from-password= --to=127.0.0.1:3307 --to-user=root --to-password= > result_datatravel.log 2>&1 &
+#测试多个db到一个db的radondb测试场景, plus-->radondb
+#./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=radondb --set-global-read-lock=true --from=192.168.0.4:3306 --from-user=ubuntu --from-password=zhu1241jie --to=192.168.0.23:3306 --to-user=ubuntu --to-password=zhu1241jie --databases xx,bb > result_datatravel.log 2>&1 &
+#测试多个db到一个db的radondb测试场景, plus-->本地radondb
+./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=radondb --set-global-read-lock=true --from=192.168.0.4:3306 --from-user=ubuntu --from-password=zhu1241jie --to=127.0.0.1:3308 --to-user=root --to-password=123456 --databases xx,bb > result_datatravel.log 2>&1 &
+#./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=127.0.0.1:3306 --from-user=root --from-password= --to=127.0.0.1:3307 --to-user=root --to-password= --table-db=test --tables=ff_basic_flightmanifest > result_datatravel.log 2>&1 &
+#测试多个db到一个db的radondb测试场景
+#./datatravel --threads=12 --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=127.0.0.1:3306 --from-user=root --from-password= --to=127.0.0.1:3307 --to-user=root --to-password= --databases sbtest  > result_datatravel.log 2>&1 &
+#./datatravel --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=192.168.0.30:3306 --from-user=test --from-password=123456 --to=127.0.0.1:3307 --to-user=root --to-password= --table-db=test --tables=wp_options > result_datatravel.log 2>&1 &
+#./datatravel --threads=12 --max-allowed-packet-MB=16 --fk-check=false --debug=false --to-flavor=mysql --set-global-read-lock=true --from=127.0.0.1:3306 --from-user=root --from-password= --to=127.0.0.1:3307 --to-user=root --to-password= --table-db=test --tables=t > result_datatravel.log 2>&1 &
