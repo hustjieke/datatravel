@@ -35,6 +35,7 @@ type Shift struct {
 	allDone       bool
 	panicHandler  func(log *xlog.Log, format string, v ...interface{})
 
+	dumpDone bool
 	// wg used for check when travel data done
 	wg sync.WaitGroup
 	// used for set flush tables with read lock and unlock tables;
@@ -793,7 +794,7 @@ func (shift *Shift) dumpProgress() error {
 			config.UpdateTravelProgress(progress, cfg.MetaDir)
 			log.Info("travel.progress%+v", progress)
 
-			if per > 98 {
+			if per > 98 || shift.dumpDone {
 				log.Info("wait.dump.shift.dump.done.during.progress:%+v", perStr)
 				<-s.canal.WaitDumpDone()
 				progress.DumpProgressRate = fmt.Sprintf("%v", "100%")
@@ -858,6 +859,7 @@ func (shift *Shift) behindsCheckStart() error {
 		log.Info("shift.dumping...")
 		// If some error happened during dumping, wait dump will be still set dump done.
 		<-s.canal.WaitDumpDone()
+		shift.dumpDone = true
 		// Wait dump worker done.
 		log.Info("shift.wait.dumper.background.worker.again...")
 		//shift.handler.WaitWorkerDone()
