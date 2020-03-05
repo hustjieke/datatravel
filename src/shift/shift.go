@@ -50,6 +50,7 @@ func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
 		log:           log,
 		cfg:           cfg,
 		done:          make(chan bool),
+		dumpDone:      false,
 		behindsTicker: time.NewTicker(time.Duration(5000) * time.Millisecond),
 		panicHandler:  logPanicHandler,
 		canalStatus:   true,
