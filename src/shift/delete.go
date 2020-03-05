@@ -65,5 +65,14 @@ func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 		}
 	}
 
-	executeFunc(conn)
+	// executeFunc(conn)
+	tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
+	if ok {
+		// 过滤
+		for _, tbl := range tables {
+			if e.Table.Name == tbl {
+				executeFunc(conn)
+			}
+		}
+	}
 }
