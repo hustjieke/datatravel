@@ -85,6 +85,7 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 		for _, tbl := range tables {
 			if e.Table.Name == tbl {
 				executeFunc(conn)
+				break
 			}
 		}
 	}

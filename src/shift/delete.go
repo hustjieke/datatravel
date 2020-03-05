@@ -72,6 +72,7 @@ func (h *EventHandler) DeleteRow(e *canal.RowsEvent) {
 		for _, tbl := range tables {
 			if e.Table.Name == tbl {
 				executeFunc(conn)
+				break
 			}
 		}
 	}

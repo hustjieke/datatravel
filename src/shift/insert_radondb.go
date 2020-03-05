@@ -109,6 +109,7 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 			for _, tbl := range tables {
 				if e.Table.Name == tbl {
 					executeFunc(conn)
+					break
 				}
 			}
 		}
