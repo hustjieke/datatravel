@@ -22,7 +22,7 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 	var conn *client.Conn
 	h.wg.Add(1)
 
-	executeFunc := func(conn *client.Conn) {
+	executeFunc := func(conn *client.Conn, filter bool) {
 		defer h.wg.Done()
 		var keep = true
 
@@ -88,7 +88,8 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 				typ:       QueryType_INSERT,
 				skipError: systemTable,
 			}
-			h.execute(conn, keep, query)
+
+			h.execute(conn, keep, query, filter)
 		}
 	}
 
@@ -103,21 +104,22 @@ func (h *EventHandler) InsertRadonDBRow(e *canal.RowsEvent, systemTable, isNotFi
 	// if e.DataType == canal.BINLOGDATA {
 	// Binlog sync
 	if e.Header != nil {
-		executeFunc(conn)
-		//tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
-		//if ok {
-		//	// 过滤
-		//	for _, tbl := range tables {
-		//		if e.Table.Name == tbl {
-		//			executeFunc(conn)
-		//			break
-		//		}
-		//	}
-		//}
+		filter := true
+		tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
+		if ok {
+			// 过滤
+			for _, tbl := range tables {
+				if e.Table.Name == tbl {
+					filter = false
+					break
+				}
+			}
+		}
+		executeFunc(conn, filter)
 	} else {
 		// canal.DUMPDATA, Backend worker for mysqldump.
 		go func(conn *client.Conn) {
-			executeFunc(conn)
+			executeFunc(conn, false)
 		}(conn)
 	}
 }

@@ -93,7 +93,7 @@ func (h *EventHandler) WaitWorkerDone() {
 	h.wg.Wait()
 }
 
-func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query) {
+func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query, filter bool) {
 	sql := query.sql
 	log := h.log
 	shift := h.shift
@@ -104,13 +104,15 @@ func (h *EventHandler) execute(conn *client.Conn, keep bool, query *Query) {
 	case QueryType_INSERT, QueryType_DELETE, QueryType_UPDATE:
 		{
 			execFn := func() {
-				if _, err := conn.Execute(sql); err != nil {
-					// if query.skipError {
-					if true {
-						log.Error("shift.execute.sql[%s].error:%+v", sql, err)
-					} else {
-						log.Error("shift.execute.sql[%s].error:%+v", sql, err)
-						shift.panicMe("shift.execute.sql[%s].error:%+v", sql, err)
+				if !filter {
+					if _, err := conn.Execute(sql); err != nil {
+						// if query.skipError {
+						if true {
+							log.Error("shift.execute.sql[%s].error:%+v", sql, err)
+						} else {
+							log.Error("shift.execute.sql[%s].error:%+v", sql, err)
+							shift.panicMe("shift.execute.sql[%s].error:%+v", sql, err)
+						}
 					}
 				}
 			}

@@ -20,7 +20,7 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 	var conn *client.Conn
 
 	h.wg.Add(1)
-	executeFunc := func(conn *client.Conn) {
+	executeFunc := func(conn *client.Conn, filter bool) {
 		defer h.wg.Done()
 		var keep = true
 
@@ -66,7 +66,7 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 				typ:       QueryType_UPDATE,
 				skipError: false,
 			}
-			h.execute(conn, keep, query)
+			h.execute(conn, keep, query, filter)
 		}
 	}
 
@@ -78,15 +78,16 @@ func (h *EventHandler) UpdateRow(e *canal.RowsEvent) {
 		}
 	}
 
-	executeFunc(conn)
-	//tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
-	//if ok {
-	//	// 过滤
-	//	for _, tbl := range tables {
-	//		if e.Table.Name == tbl {
-	//			executeFunc(conn)
-	//			break
-	//		}
-	//	}
-	//}
+	filter := true
+	tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
+	if ok {
+		// 过滤
+		for _, tbl := range tables {
+			if e.Table.Name == tbl {
+				filter = false
+				break
+			}
+		}
+	}
+	executeFunc(conn, filter)
 }

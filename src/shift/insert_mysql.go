@@ -21,7 +21,7 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 	var conn *client.Conn
 	h.wg.Add(1)
 
-	executeFunc := func(conn *client.Conn) {
+	executeFunc := func(conn *client.Conn, filter bool) {
 		defer h.wg.Done()
 		var keep = true
 
@@ -47,14 +47,14 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 					typ:       QueryType_INSERT,
 					skipError: systemTable,
 				}
-				h.execute(conn, keep, query)
+				h.execute(conn, keep, query, filter)
 			} else {
 				query := &Query{
 					sql:       fmt.Sprintf("insert into `%s`.`%s` values (%s)", e.Table.Schema, e.Table.Name, strings.Join(values, ",")),
 					typ:       QueryType_INSERT,
 					skipError: systemTable,
 				}
-				h.execute(conn, keep, query)
+				h.execute(conn, keep, query, filter)
 			}
 		}
 	}
@@ -70,20 +70,22 @@ func (h *EventHandler) InsertMySQLRow(e *canal.RowsEvent, systemTable bool) {
 	// if e.DataType == canal.BINLOGDATA {
 	// Binlog sync
 	if e.Header != nil {
-		// executeFunc(conn)
+		filter := true
 		tables, ok := h.shift.cfg.DBTablesMaps[e.Table.Schema]
 		if ok {
 			// 过滤
 			for _, tbl := range tables {
 				if e.Table.Name == tbl {
-					executeFunc(conn)
+					filter = false
+					break
 				}
 			}
 		}
+		executeFunc(conn, filter)
 	} else {
 		// canal.DUMPDATA, Backend worker for mysqldump.
 		go func(conn *client.Conn) {
-			executeFunc(conn)
+			executeFunc(conn, false)
 		}(conn)
 	}
 }

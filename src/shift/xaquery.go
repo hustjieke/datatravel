@@ -47,8 +47,8 @@ func (h *EventHandler) XAQuery(e *canal.XAEvent) {
 	}
 
 	if XaType == QueryType_XA_ROLLBACK || XaType == QueryType_XA_COMMIT {
-		h.execute(conn, false, query)
+		h.execute(conn, false, query, false)
 	} else {
-		h.execute(conn, true, query)
+		h.execute(conn, true, query, false)
 	}
 }
