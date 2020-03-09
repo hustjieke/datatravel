@@ -33,6 +33,7 @@ type Shift struct {
 	done          chan bool
 	handler       *EventHandler
 	allDone       bool
+	dumpDone      bool
 	panicHandler  func(log *xlog.Log, format string, v ...interface{})
 
 	// wg used for check when travel data done
@@ -49,6 +50,7 @@ func NewShift(log *xlog.Log, cfg *config.Config) *Shift {
 		log:           log,
 		cfg:           cfg,
 		done:          make(chan bool),
+		dumpDone:      false,
 		behindsTicker: time.NewTicker(time.Duration(5000) * time.Millisecond),
 		panicHandler:  logPanicHandler,
 		canalStatus:   true,
@@ -793,7 +795,7 @@ func (shift *Shift) dumpProgress() error {
 			config.UpdateTravelProgress(progress, cfg.MetaDir)
 			log.Info("travel.progress%+v", progress)
 
-			if per > 98 {
+			if per > 98 || shift.dumpDone {
 				log.Info("wait.dump.shift.dump.done.during.progress:%+v", perStr)
 				<-s.canal.WaitDumpDone()
 				progress.DumpProgressRate = fmt.Sprintf("%v", "100%")
@@ -860,7 +862,7 @@ func (shift *Shift) behindsCheckStart() error {
 		<-s.canal.WaitDumpDone()
 		// Wait dump worker done.
 		log.Info("shift.wait.dumper.background.worker.again...")
-		//shift.handler.WaitWorkerDone()
+		shift.dumpDone = true
 		log.Info("shift.wait.dumper.background.worker.done...")
 		progress := &config.TravelProgress{
 			DumpProgressRate: "100%",
